@@ -1,0 +1,167 @@
+{
+  "projectType": "ai-ml",
+  "projectName": "ComfyUI",
+  "projectDescription": "The most powerful and modular visual AI engine and application with a graph/nodes interface for diffusion models.",
+  "theme": "aspen",
+  "primaryColor": "#7C3AED",
+  "lightColor": "#A78BFA",
+  "darkColor": "#5B21B6",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/workflows",
+              "concepts/nodes",
+              "concepts/models",
+              "concepts/execution"
+            ]
+          },
+          {
+            "group": "Supported Models",
+            "pages": [
+              "models/image-models",
+              "models/video-models",
+              "models/audio-models",
+              "models/3d-models"
+            ]
+          },
+          {
+            "group": "Advanced Features",
+            "pages": [
+              "advanced/quantization",
+              "advanced/memory-management",
+              "advanced/custom-nodes",
+              "advanced/model-merging"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/model-paths",
+              "configuration/command-line-args",
+              "configuration/hardware-support"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "REST API",
+            "pages": [
+              "api/overview",
+              "api/prompt",
+              "api/history",
+              "api/queue"
+            ]
+          },
+          {
+            "group": "WebSocket API",
+            "pages": [
+              "api/websocket-overview",
+              "api/websocket-events"
+            ]
+          },
+          {
+            "group": "Node Reference",
+            "pages": [
+              "nodes/overview",
+              "nodes/loaders",
+              "nodes/conditioning",
+              "nodes/sampling",
+              "nodes/latent",
+              "nodes/image"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Extensions",
+        "groups": [
+          {
+            "group": "Custom Nodes",
+            "pages": [
+              "extensions/creating-nodes",
+              "extensions/node-api",
+              "extensions/best-practices"
+            ]
+          },
+          {
+            "group": "ComfyUI Manager",
+            "pages": [
+              "extensions/manager-overview",
+              "extensions/installing-extensions"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Guides",
+        "groups": [
+          {
+            "group": "Tutorials",
+            "pages": [
+              "guides/first-workflow",
+              "guides/text-to-image",
+              "guides/image-to-image",
+              "guides/inpainting",
+              "guides/controlnet"
+            ]
+          },
+          {
+            "group": "Integration",
+            "pages": [
+              "guides/python-integration",
+              "guides/headless-mode",
+              "guides/docker"
+            ]
+          },
+          {
+            "group": "Troubleshooting",
+            "pages": [
+              "guides/common-issues",
+              "guides/performance-optimization",
+              "guides/gpu-troubleshooting"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Node-based visual workflow interface for stable diffusion",
+    "Support for 30+ image, video, audio, and 3D AI models",
+    "REST and WebSocket API for programmatic control",
+    "Custom node system with extension support",
+    "Advanced memory management and GPU optimization",
+    "Model quantization for efficient inference",
+    "Multi-platform support (Windows, Linux, macOS)",
+    "Asynchronous queue system with workflow caching"
+  ],
+  "publicApiSurface": [
+    "/prompt - Queue workflows for execution",
+    "/history - Get execution history",
+    "/queue - Manage execution queue",
+    "/view - Retrieve generated images",
+    "WebSocket - Real-time execution updates",
+    "CLIPTextEncode - Text prompt encoding",
+    "KSampler - Sampling node",
+    "CheckpointLoaderSimple - Model loading",
+    "VAEDecode - VAE decoding",
+    "SaveImage - Image saving",
+    "Custom Node API - Extension development"
+  ]
+}
