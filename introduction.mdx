@@ -1,0 +1,108 @@
+---
+title: ComfyUI
+sidebarTitle: Introduction
+description: The most powerful and modular visual AI engine and application
+---
+
+<img
+  className="block"
+  src="https://github.com/user-attachments/assets/7ccaf2c1-9b72-41ae-9a89-5688c94b7abe"
+  alt="ComfyUI Interface"
+/>
+
+## What is ComfyUI?
+
+ComfyUI is a powerful and modular visual AI engine that lets you design and execute advanced stable diffusion pipelines using a graph/nodes/flowchart based interface. Create complex workflows without writing any code.
+
+Available on Windows, Linux, and macOS with support for NVIDIA, AMD, Intel, Apple Silicon, and Ascend GPUs.
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Node-based interface" icon="sitemap">
+    Experiment with complex Stable Diffusion workflows using an intuitive graph interface. No coding required.
+  </Card>
+  
+  <Card title="Extensive model support" icon="robot">
+    Works with SD1.x, SD2.x, SDXL, SD3, Flux, and many more image, video, audio, and 3D models.
+  </Card>
+  
+  <Card title="Smart memory management" icon="microchip">
+    Automatically runs large models on GPUs with as low as 1GB VRAM through intelligent offloading.
+  </Card>
+  
+  <Card title="Optimized execution" icon="bolt">
+    Only re-executes parts of the workflow that change between runs, saving time and resources.
+  </Card>
+</CardGroup>
+
+## Get started
+
+<CardGroup cols={2}>
+  <Card
+    title="Installation"
+    icon="download"
+    href="/installation"
+  >
+    Install ComfyUI on Windows, Linux, or macOS with step-by-step instructions for all platforms.
+  </Card>
+  
+  <Card
+    title="Quick start"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Create your first workflow and generate images in minutes with our beginner-friendly guide.
+  </Card>
+</CardGroup>
+
+## What you can do with ComfyUI
+
+### Image generation and editing
+
+- Generate images from text prompts with various Stable Diffusion models
+- Apply LoRAs and embeddings to customize your outputs
+- Use ControlNet and T2I-Adapter for precise control over generation
+- Inpainting and outpainting with specialized models
+- Upscale images with ESRGAN, SwinIR, and other models
+
+### Advanced workflows
+
+- Area composition to control different regions of your image
+- Model merging to create custom hybrid models
+- Two-pass generation for high-resolution outputs
+- GLIGEN for grounded language-to-image generation
+- Load workflows directly from PNG, WebP, and FLAC files
+
+### Video and beyond
+
+- Video generation with Stable Video Diffusion, Mochi, LTX-Video, and Hunyuan Video
+- Audio generation with Stable Audio and ACE Step
+- 3D model generation with Hunyuan3D 2.0
+
+## Fully offline operation
+
+ComfyUI works completely offline by default. The core will never download anything unless you want it to. Optional API nodes for paid external models can be disabled with `--disable-api-nodes`.
+
+## Keyboard shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl + Enter` | Queue generation |
+| `Ctrl + S` | Save workflow |
+| `Ctrl + O` | Load workflow |
+| `Ctrl + Z` / `Ctrl + Y` | Undo/Redo |
+| `Space` | Pan canvas |
+| `Double-Click` | Open node search |
+| `.` | Fit view to selection |
+
+<Tip>
+  On macOS, use `Cmd` instead of `Ctrl` for all shortcuts.
+</Tip>
+
+## Community and support
+
+- [Discord](https://comfy.org/discord) - Get help in #help or #feedback channels
+- [Matrix](https://app.element.io/#/room/%23comfyui_space%3Amatrix.org) - Open source alternative to Discord
+- [ComfyUI Examples](https://comfyanonymous.github.io/ComfyUI_examples/) - Explore example workflows
+- [Website](https://www.comfy.org/) - Official ComfyUI website

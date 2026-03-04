@@ -1,0 +1,283 @@
+---
+title: Creating Custom Nodes
+description: Learn how to create custom nodes for ComfyUI using the modern node API
+---
+
+Custom nodes extend ComfyUI's functionality by adding new processing capabilities to your workflows. This guide covers creating nodes using the modern ComfyUI API.
+
+## Basic Node Structure
+
+Custom nodes in ComfyUI are Python classes that inherit from `io.ComfyNode` and define a schema for inputs, outputs, and execution logic.
+
+### Minimal Example
+
+```python
+from comfy_api.latest import ComfyExtension, io
+
+class MyCustomNode(io.ComfyNode):
+    @classmethod
+    def define_schema(cls) -> io.Schema:
+        return io.Schema(
+            node_id="MyCustomNode",
+            display_name="My Custom Node",
+            category="custom",
+            inputs=[
+                io.Image.Input("image"),
+            ],
+            outputs=[
+                io.Image.Output(),
+            ],
+        )
+
+    @classmethod
+    def execute(cls, image) -> io.NodeOutput:
+        # Process the image
+        processed_image = image  # Your processing here
+        return io.NodeOutput(processed_image)
+```
+
+## Schema Definition
+
+The `define_schema()` method tells ComfyUI about your node's metadata, inputs, and outputs.
+
+### Schema Parameters
+
+<ParamField path="node_id" type="string" required>
+  Unique identifier for your node
+</ParamField>
+
+<ParamField path="display_name" type="string" required>
+  Human-readable name shown in the UI
+</ParamField>
+
+<ParamField path="category" type="string" required>
+  Category path for organizing nodes (e.g., "image/processing")
+</ParamField>
+
+<ParamField path="inputs" type="list[Input]" required>
+  List of input definitions
+</ParamField>
+
+<ParamField path="outputs" type="list[Output]" required>
+  List of output definitions
+</ParamField>
+
+## Input Types
+
+ComfyUI provides various input types for different data:
+
+### Image Input
+
+```python
+io.Image.Input(
+    "image",
+    optional=False,
+    tooltip="The input image to process"
+)
+```
+
+### Numeric Inputs
+
+<CodeGroup>
+```python Integer
+io.Int.Input(
+    "int_field",
+    min=0,
+    max=4096,
+    step=64,
+    default=512,
+    display_mode=io.NumberDisplay.slider,
+    tooltip="Integer value"
+)
+```
+
+```python Float
+io.Float.Input(
+    "float_field",
+    min=0.0,
+    max=10.0,
+    step=0.01,
+    default=1.0,
+    round=0.001,
+    display_mode=io.NumberDisplay.number,
+    tooltip="Float value"
+)
+```
+</CodeGroup>
+
+### String Input
+
+```python
+io.String.Input(
+    "text_field",
+    multiline=True,
+    default="Hello world!",
+    tooltip="Text input"
+)
+```
+
+### Combo (Dropdown) Input
+
+```python
+io.Combo.Input(
+    "mode",
+    options=["option1", "option2", "option3"],
+    default="option1",
+    tooltip="Select an option"
+)
+```
+
+## Complete Example
+
+Here's a complete example from the ComfyUI source code:
+
+```python
+from typing_extensions import override
+from comfy_api.latest import ComfyExtension, io
+
+class Example(io.ComfyNode):
+    """
+    An example node that processes images
+    """
+
+    @classmethod
+    def define_schema(cls) -> io.Schema:
+        return io.Schema(
+            node_id="Example",
+            display_name="Example Node",
+            category="Example",
+            inputs=[
+                io.Image.Input("image"),
+                io.Int.Input(
+                    "int_field",
+                    min=0,
+                    max=4096,
+                    step=64,
+                    display_mode=io.NumberDisplay.number,
+                    lazy=True,
+                ),
+                io.Float.Input(
+                    "float_field",
+                    default=1.0,
+                    min=0.0,
+                    max=10.0,
+                    step=0.01,
+                    round=0.001,
+                    display_mode=io.NumberDisplay.number,
+                    lazy=True,
+                ),
+                io.Combo.Input(
+                    "print_to_screen",
+                    options=["enable", "disable"]
+                ),
+                io.String.Input(
+                    "string_field",
+                    multiline=False,
+                    default="Hello world!",
+                    lazy=True,
+                )
+            ],
+            outputs=[
+                io.Image.Output(),
+            ],
+        )
+
+    @classmethod
+    def execute(cls, image, string_field, int_field, 
+                float_field, print_to_screen) -> io.NodeOutput:
+        if print_to_screen == "enable":
+            print(f"""Your input contains:
+                string_field: {string_field}
+                int_field: {int_field}
+                float_field: {float_field}
+            """)
+        
+        # Process image (invert in this example)
+        image = 1.0 - image
+        return io.NodeOutput(image)
+
+class ExampleExtension(ComfyExtension):
+    @override
+    async def get_node_list(self) -> list[type[io.ComfyNode]]:
+        return [Example]
+
+async def comfy_entrypoint() -> ExampleExtension:
+    return ExampleExtension()
+```
+
+<Note>
+The `comfy_entrypoint()` function is the entry point that ComfyUI calls to load your extension and its nodes.
+</Note>
+
+## Lazy Evaluation
+
+Inputs marked with `lazy=True` are only evaluated when needed, which can improve performance:
+
+```python
+@classmethod
+def check_lazy_status(cls, image, string_field, int_field, 
+                      float_field, print_to_screen):
+    """
+    Return a list of input names that need to be evaluated.
+    Unevaluated inputs will have the value None.
+    """
+    if print_to_screen == "enable":
+        return ["int_field", "float_field", "string_field"]
+    else:
+        return []
+```
+
+<Tip>
+Use `check_lazy_status()` to control which lazy inputs are evaluated based on other input values.
+</Tip>
+
+## Input Caching
+
+Control when your node re-executes using `fingerprint_inputs()`:
+
+```python
+@classmethod
+def fingerprint_inputs(cls, image, string_field, int_field, 
+                       float_field, print_to_screen):
+    """
+    Return a value that changes when the node should re-execute.
+    If this returns the same value as the last execution, the node 
+    will not run again.
+    """
+    import hashlib
+    # Example: hash the image data
+    return hashlib.md5(image.numpy().tobytes()).hexdigest()
+```
+
+## Extension Class
+
+Wrap your nodes in a `ComfyExtension` class:
+
+```python
+class MyExtension(ComfyExtension):
+    async def on_load(self) -> None:
+        """Called when the extension loads"""
+        print("My extension loaded!")
+    
+    @override
+    async def get_node_list(self) -> list[type[io.ComfyNode]]:
+        """Return all nodes provided by this extension"""
+        return [
+            MyCustomNode,
+            AnotherNode,
+        ]
+
+async def comfy_entrypoint() -> MyExtension:
+    return MyExtension()
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Node API Reference" icon="code" href="/extensions/node-api">
+    Explore the complete API reference
+  </Card>
+  <Card title="Best Practices" icon="star" href="/extensions/best-practices">
+    Learn best practices for node development
+  </Card>
+</CardGroup>

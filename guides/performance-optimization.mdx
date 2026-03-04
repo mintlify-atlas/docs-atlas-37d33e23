@@ -1,0 +1,406 @@
+---
+title: Performance Optimization
+description: Optimize ComfyUI for speed and efficiency
+---
+
+This guide covers various techniques to improve ComfyUI's performance based on your hardware configuration.
+
+## VRAM Management
+
+ComfyUI includes smart memory management that automatically optimizes VRAM usage. Understanding the different VRAM modes helps you choose the best configuration.
+
+<Accordion title="VRAM State Modes">
+  ComfyUI operates in different VRAM states depending on your hardware:
+
+  **HIGH_VRAM Mode** (Default for GPUs with sufficient VRAM):
+  ```bash
+  python main.py --highvram
+  ```
+  - Keeps models in VRAM
+  - Fastest performance
+  - Recommended for GPUs with 12GB+ VRAM
+
+  **NORMAL_VRAM Mode** (Default):
+  ```bash
+  python main.py
+  ```
+  - Balanced approach
+  - Moves models between RAM and VRAM as needed
+  - Works for most configurations
+
+  **LOW_VRAM Mode**:
+  ```bash
+  python main.py --lowvram
+  ```
+  - Offloads models more aggressively
+  - Slower but works with limited VRAM
+  - Recommended for GPUs with 4-8GB VRAM
+
+  **NO_VRAM Mode**:
+  ```bash
+  python main.py --novram
+  ```
+  - Keeps minimal data in VRAM
+  - Very slow but works with < 2GB VRAM
+  - Last resort for extremely limited GPUs
+
+  **GPU_ONLY Mode**:
+  ```bash
+  python main.py --gpu-only
+  ```
+  - Never offload to CPU
+  - Useful when you want to keep everything on GPU
+  - Requires sufficient VRAM for your workflow
+</Accordion>
+
+<Accordion title="VRAM Reservation">
+  Reserve VRAM for other applications to prevent conflicts:
+
+  ```bash
+  python main.py --reserve-vram 2.0
+  ```
+
+  This reserves 2GB of VRAM. Adjust based on your needs:
+  - **Windows Default**: 600MB (due to shared memory overhead)
+  - **Linux Default**: 400MB
+  - **16GB+ GPUs**: Additional 100MB reserved automatically
+
+  Lower reservation = more memory for ComfyUI but may cause issues with other GPU applications.
+</Accordion>
+
+<Accordion title="Memory Pinning">
+  ComfyUI automatically pins memory for faster transfers between RAM and VRAM on NVIDIA and AMD GPUs.
+
+  **Automatic pinning limits:**
+  - **Windows**: 45% of system RAM (OS limit ~50%)
+  - **Linux**: 95% of system RAM
+
+  To disable pinned memory:
+  ```bash
+  python main.py --disable-pinned-memory
+  ```
+
+  Only disable if you experience crashes or memory issues.
+</Accordion>
+
+## Attention Mechanisms
+
+Different attention implementations offer varying performance characteristics.
+
+<Accordion title="PyTorch Attention (Recommended for modern GPUs)">
+  PyTorch's built-in attention is automatically enabled on NVIDIA GPUs with PyTorch 2.0+.
+
+  Force enable:
+  ```bash
+  python main.py --use-pytorch-cross-attention
+  ```
+
+  **Automatically enabled for:**
+  - NVIDIA GPUs with PyTorch 2.0+
+  - Intel XPU
+  - Ascend NPU
+  - Cambricon MLU
+
+  **Benefits:**
+  - Flash Attention support on compatible hardware
+  - Memory efficient attention
+  - Generally faster on modern GPUs
+</Accordion>
+
+<Accordion title="xformers Attention">
+  xformers provides memory-efficient attention but has compatibility issues.
+
+  Install xformers:
+  ```bash
+  pip install xformers
+  ```
+
+  **Warning:** Avoid xformers 0.0.18 - it causes black images at high resolutions.
+
+  Disable xformers if you experience issues:
+  ```bash
+  python main.py --disable-xformers
+  ```
+
+  **Note:** PyTorch attention is now preferred over xformers on most systems.
+</Accordion>
+
+<Accordion title="Split/Quad Cross Attention">
+  Alternative attention modes for specific hardware:
+
+  **Split Cross Attention:**
+  ```bash
+  python main.py --use-split-cross-attention
+  ```
+  - Reduces memory usage
+  - Slower than standard attention
+  - Useful for very limited VRAM
+
+  **Quad Cross Attention:**
+  ```bash
+  python main.py --use-quad-cross-attention
+  ```
+  - Even more memory efficient
+  - Significantly slower
+  - For extreme VRAM limitations
+</Accordion>
+
+## Precision and Data Types
+
+Choosing the right precision can significantly impact performance and memory usage.
+
+<Accordion title="FP16 Optimization (Recommended)">
+  Half-precision (FP16) reduces memory usage and increases speed on modern GPUs.
+
+  **Automatically used on:**
+  - NVIDIA GPUs with compute capability 8.0+ (RTX 30/40 series)
+  - AMD GPUs (all with ROCm)
+  - Apple Silicon (MPS)
+  - Intel XPU with FP16 support
+
+  Force FP16:
+  ```bash
+  python main.py --fp16-unet --fp16-vae --fp16-text-enc
+  ```
+
+  **FP16 Accumulation** (NVIDIA/AMD only):
+  ```bash
+  python main.py --fast
+  ```
+  This enables FP16 matrix multiplication accumulation for additional speed on supported GPUs.
+</Accordion>
+
+<Accordion title="BF16 Support">
+  BFloat16 offers better numerical stability than FP16 with similar performance.
+
+  **Automatically used on:**
+  - NVIDIA GPUs with compute capability 8.0+
+  - AMD RDNA3+ GPUs
+  - Apple Silicon (macOS 14+)
+  - Intel XPU with BF16 support
+
+  Force BF16:
+  ```bash
+  python main.py --bf16-unet
+  ```
+
+  **Note:** BF16 is automatically selected when supported and beneficial.
+</Accordion>
+
+<Accordion title="FP8 Precision (Cutting Edge)">
+  FP8 precision offers significant memory savings on compatible hardware.
+
+  **Supported on:**
+  - NVIDIA GPUs: RTX 40 series, H100, A100 (compute capability 8.9+)
+  - AMD GPUs: RDNA3+ with ROCm 6.4+ and PyTorch 2.7+
+
+  Force FP8:
+  ```bash
+  python main.py --fp8-e4m3fn-unet
+  ```
+
+  **Note:** FP8 is automatically used when models are loaded in FP8 format and the GPU supports FP8 compute.
+</Accordion>
+
+<Accordion title="Force FP32 (Troubleshooting)">
+  If you experience quality issues, force full precision:
+
+  ```bash
+  python main.py --force-fp32
+  ```
+
+  This disables all FP16/BF16 optimizations. Use only for debugging - significantly slower and uses more VRAM.
+</Accordion>
+
+## Caching and Execution
+
+<Accordion title="Output Caching">
+  ComfyUI only re-executes parts of the workflow that change between runs.
+
+  **Cache Types:**
+
+  **Classic Cache** (Default):
+  - Caches all node outputs
+  - Best for most workflows
+
+  **LRU Cache**:
+  ```bash
+  python main.py --cache-lru 100
+  ```
+  - Least Recently Used cache with size limit
+  - Value = number of cached items
+  - Good for memory-constrained systems
+
+  **RAM Pressure Cache**:
+  ```bash
+  python main.py --cache-ram 0.8
+  ```
+  - Dynamically adjusts cache based on RAM usage
+  - Value = RAM usage threshold (0.0-1.0)
+
+  **No Cache**:
+  ```bash
+  python main.py --cache-none
+  ```
+  - Disables all caching
+  - Useful for debugging only
+</Accordion>
+
+<Accordion title="Smart Memory Management">
+  Enabled by default, smart memory automatically manages model loading and unloading.
+
+  Disable for manual control:
+  ```bash
+  python main.py --disable-smart-memory
+  ```
+
+  **Warning:** Only disable if you know what you're doing. Smart memory prevents OOM errors.
+</Accordion>
+
+## Async Operations
+
+<Accordion title="Async Weight Offloading">
+  Asynchronous offloading improves performance by overlapping memory transfers with computation.
+
+  **Automatically enabled** on NVIDIA and AMD GPUs with 2 streams.
+
+  Customize stream count:
+  ```bash
+  python main.py --async-offload 3
+  ```
+
+  Disable if experiencing issues:
+  ```bash
+  python main.py --disable-async-offload
+  ```
+
+  **Benefits:**
+  - Reduces idle time during model loading
+  - Improves overall throughput
+  - Most effective with multiple large models
+</Accordion>
+
+<Accordion title="CUDA Optimizations (NVIDIA)">
+  Additional NVIDIA-specific optimizations:
+
+  **Disable CUDA Malloc** (older GPUs):
+  ```bash
+  python main.py --disable-cuda-malloc
+  ```
+
+  **Fast Mode** (enables multiple optimizations):
+  ```bash
+  python main.py --fast
+  ```
+  Enables:
+  - FP16 accumulation
+  - cuDNN auto-tuning (first run slower, subsequent runs faster)
+
+  **Force Channels Last** (experimental):
+  ```bash
+  python main.py --force-channels-last
+  ```
+  May improve performance on some models.
+</Accordion>
+
+## Platform-Specific Optimizations
+
+<Accordion title="AMD ROCm Optimizations">
+  AMD-specific settings for better performance:
+
+  **Enable AOTriton (RDNA3+):**
+  ```bash
+  TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1 python main.py --use-pytorch-cross-attention
+  ```
+
+  **Enable TunableOp:**
+  ```bash
+  PYTORCH_TUNABLEOP_ENABLED=1 python main.py
+  ```
+  - First run is very slow (builds optimization database)
+  - Subsequent runs are faster
+
+  **Disable cuDNN for RDNA3+:**
+  Automatically disabled on RDNA3+ for better performance. To re-enable:
+  ```bash
+  COMFYUI_ENABLE_MIOPEN=1 python main.py
+  ```
+</Accordion>
+
+<Accordion title="Intel XPU Optimizations">
+  Intel Arc GPU optimizations:
+
+  **IPEX Optimization** (enabled by default):
+  Automatically optimizes models for Intel XPU.
+
+  Disable if experiencing issues:
+  ```bash
+  python main.py --disable-ipex-optimize
+  ```
+
+  **OneAPI Device Selector:**
+  ```bash
+  python main.py --oneapi-device-selector "level_zero:0"
+  ```
+  Selects specific Intel device when multiple are available.
+</Accordion>
+
+<Accordion title="Apple Silicon (MPS) Optimization">
+  macOS-specific settings:
+
+  **MPS is automatically detected and used** on Apple Silicon Macs.
+
+  Force CPU mode if experiencing issues:
+  ```bash
+  python main.py --cpu
+  ```
+
+  **VAE on CPU** (reduces VRAM usage):
+  ```bash
+  python main.py --cpu-vae
+  ```
+
+  **Note:** Non-blocking transfers are disabled on MPS due to PyTorch limitations.
+</Accordion>
+
+## Workflow Optimization Tips
+
+<Accordion title="Best Practices for Fast Workflows">
+  1. **Minimize dynamic changes**: ComfyUI only re-executes changed nodes. Keep static parts of your workflow unchanged.
+
+  2. **Use appropriate image sizes**: Larger images require exponentially more VRAM and time.
+
+  3. **Batch processing**: Process multiple images in a single batch when possible.
+
+  4. **Preview settings**: Use low-resolution previews during development:
+     ```bash
+     python main.py --preview-method auto
+     ```
+
+  5. **Model selection**: Smaller models (SD 1.5) are faster than larger ones (SDXL, SD3).
+
+  6. **LoRA usage**: Multiple LoRAs increase memory usage and loading time.
+</Accordion>
+
+## Monitoring and Diagnostics
+
+<Accordion title="Performance Monitoring">
+  Enable verbose logging to see detailed performance information:
+
+  ```bash
+  python main.py --verbose DEBUG
+  ```
+
+  Check VRAM usage:
+  - ComfyUI logs total VRAM and RAM at startup
+  - Model loading/unloading is logged
+  - Performance warnings appear in console
+
+  **Deterministic mode** (for reproducible results):
+  ```bash
+  python main.py --deterministic
+  ```
+  - Ensures reproducible outputs
+  - Slightly slower
+  - Disables some optimizations
+</Accordion>

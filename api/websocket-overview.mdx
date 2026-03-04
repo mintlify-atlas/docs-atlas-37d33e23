@@ -1,0 +1,275 @@
+---
+title: WebSocket API Overview
+description: Connect to ComfyUI via WebSocket for real-time workflow execution updates
+---
+
+## Introduction
+
+The WebSocket API provides real-time, bidirectional communication between your client application and the ComfyUI server. Use it to monitor workflow execution, receive progress updates, and get preview images as they're generated.
+
+## Connection Endpoint
+
+Connect to the WebSocket endpoint using the following URL format:
+
+```
+ws://<server_address>/ws?clientId=<client_id>
+```
+
+<ParamField path="server_address" type="string" required>
+  The ComfyUI server address (e.g., `127.0.0.1:8188`)
+</ParamField>
+
+<ParamField query="clientId" type="string" optional>
+  A unique identifier for your client session. If not provided, the server generates one automatically. Providing a `clientId` allows you to reconnect and resume an existing session.
+</ParamField>
+
+## Connection Example
+
+Here's how to establish a WebSocket connection using Python:
+
+<CodeGroup>
+```python Python (websocket-client)
+import websocket
+import uuid
+
+server_address = "127.0.0.1:8188"
+client_id = str(uuid.uuid4())
+
+ws = websocket.WebSocket()
+ws.connect(f"ws://{server_address}/ws?clientId={client_id}")
+
+# Listen for messages
+while True:
+    out = ws.recv()
+    if isinstance(out, str):
+        message = json.loads(out)
+        print(f"Received: {message['type']}")
+    else:
+        # Binary data (preview images)
+        print(f"Received binary data: {len(out)} bytes")
+```
+
+```javascript JavaScript
+const clientId = crypto.randomUUID();
+const ws = new WebSocket(`ws://127.0.0.1:8188/ws?clientId=${clientId}`);
+
+ws.onopen = () => {
+  console.log('WebSocket connected');
+};
+
+ws.onmessage = (event) => {
+  if (typeof event.data === 'string') {
+    const message = JSON.parse(event.data);
+    console.log('Received:', message.type, message.data);
+  } else {
+    // Binary data (preview images)
+    console.log('Received binary data:', event.data.byteLength, 'bytes');
+  }
+};
+
+ws.onerror = (error) => {
+  console.error('WebSocket error:', error);
+};
+
+ws.onclose = () => {
+  console.log('WebSocket disconnected');
+};
+```
+</CodeGroup>
+
+## Initial Handshake
+
+### Server to Client: Initial Status
+
+When you first connect, the server immediately sends a `status` message with the current queue state and your session ID:
+
+```json
+{
+  "type": "status",
+  "data": {
+    "status": {
+      "exec_info": {
+        "queue_remaining": 0
+      }
+    },
+    "sid": "a1b2c3d4e5f6..."
+  }
+}
+```
+
+### Reconnection Behavior
+
+If you reconnect with an existing `clientId` and that client was executing a workflow, the server sends the current executing node:
+
+```json
+{
+  "type": "executing",
+  "data": {
+    "node": "3"
+  }
+}
+```
+
+<Note>
+  The server removes any previous WebSocket connection with the same `clientId` when you reconnect, ensuring only one active connection per client.
+</Note>
+
+## Feature Flags Negotiation
+
+ComfyUI supports feature flag negotiation between client and server. Send a `feature_flags` message as your first message after connecting:
+
+### Client to Server
+
+```json
+{
+  "type": "feature_flags",
+  "data": {
+    "supports_binary_preview": true,
+    "supports_metadata": true
+  }
+}
+```
+
+### Server Response
+
+The server responds with its supported features:
+
+```json
+{
+  "type": "feature_flags",
+  "data": {
+    "binary_preview_images": true,
+    "image_metadata": true
+  }
+}
+```
+
+<Info>
+  Feature flag negotiation is optional but recommended for advanced clients that want to leverage server capabilities.
+</Info>
+
+## Message Types
+
+WebSocket messages come in two formats:
+
+### JSON Messages
+
+Text messages with the following structure:
+
+```json
+{
+  "type": "event_type",
+  "data": { /* event-specific data */ }
+}
+```
+
+### Binary Messages
+
+Binary messages contain preview images and other binary data. The format is:
+
+```
+[4 bytes: event type ID][remaining bytes: data]
+```
+
+The first 4 bytes represent the event type as a big-endian unsigned integer. See [WebSocket Events](/api/websocket-events) for binary event types.
+
+## Tracking Workflow Execution
+
+Here's a complete example that queues a prompt and waits for execution to complete:
+
+```python
+import websocket
+import uuid
+import json
+import urllib.request
+
+server_address = "127.0.0.1:8188"
+client_id = str(uuid.uuid4())
+
+def queue_prompt(prompt, prompt_id):
+    p = {"prompt": prompt, "client_id": client_id, "prompt_id": prompt_id}
+    data = json.dumps(p).encode('utf-8')
+    req = urllib.request.Request(f"http://{server_address}/prompt", data=data)
+    urllib.request.urlopen(req).read()
+
+def wait_for_completion(ws, prompt_id):
+    while True:
+        out = ws.recv()
+        if isinstance(out, str):
+            message = json.loads(out)
+            if message['type'] == 'executing':
+                data = message['data']
+                # Execution is done when node is None
+                if data['node'] is None and data['prompt_id'] == prompt_id:
+                    print(f"Execution complete for {prompt_id}")
+                    break
+                else:
+                    print(f"Executing node: {data['node']}")
+        else:
+            # Binary preview image
+            print(f"Received preview: {len(out)} bytes")
+
+# Connect
+ws = websocket.WebSocket()
+ws.connect(f"ws://{server_address}/ws?clientId={client_id}")
+
+# Queue a prompt
+prompt_id = str(uuid.uuid4())
+queue_prompt(your_workflow, prompt_id)
+
+# Wait for completion
+wait_for_completion(ws, prompt_id)
+
+ws.close()
+```
+
+## Error Handling
+
+The WebSocket connection can fail for several reasons. Always implement proper error handling:
+
+```python
+try:
+    await ws.send_json(message)
+except (aiohttp.ClientError, 
+        aiohttp.ClientPayloadError, 
+        ConnectionResetError, 
+        BrokenPipeError, 
+        ConnectionError) as err:
+    print(f"WebSocket error: {err}")
+    # Attempt reconnection
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use a Unique Client ID">
+    Generate a unique `clientId` (UUID) for each client instance to avoid conflicts and enable proper session management.
+  </Accordion>
+
+  <Accordion title="Handle Both Message Types">
+    Always check if received data is a string (JSON) or binary data. Binary messages contain preview images.
+  </Accordion>
+
+  <Accordion title="Track Prompt IDs">
+    When queuing prompts, include the `client_id` in the request and track `prompt_id` values to match execution events with your workflows.
+  </Accordion>
+
+  <Accordion title="Implement Reconnection Logic">
+    Network issues can disconnect WebSocket connections. Implement exponential backoff reconnection with your original `clientId`.
+  </Accordion>
+
+  <Accordion title="Close Connections Properly">
+    Always close WebSocket connections when done, especially in environments with repeated calls (like web servers or Gradio apps).
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="WebSocket Events" icon="bolt" href="/api/websocket-events">
+    Learn about all WebSocket event types and their data structures
+  </Card>
+  <Card title="Queue Prompt" icon="paper-plane" href="/api/prompt">
+    Submit workflows for execution via the HTTP API
+  </Card>
+</CardGroup>

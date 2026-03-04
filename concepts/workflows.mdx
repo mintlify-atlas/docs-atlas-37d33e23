@@ -1,0 +1,284 @@
+---
+title: Workflows
+description: Understanding ComfyUI's workflow system, JSON format, and execution model
+---
+
+## Overview
+
+ComfyUI workflows are node-based graphs that define image generation pipelines. Each workflow is a JSON structure containing nodes, their connections, and configuration. The workflow system supports both static and dynamic execution with advanced features like caching and subgraph expansion.
+
+## Workflow JSON Format
+
+Workflows are represented as JSON objects with a specific structure:
+
+```json
+{
+  "revision": 0,
+  "last_node_id": 8,
+  "last_link_id": 0,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "CheckpointLoaderSimple",
+      "pos": [100, 100],
+      "size": [315, 98],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "outputs": [
+        {"name": "MODEL", "type": "MODEL", "links": [1]},
+        {"name": "CLIP", "type": "CLIP", "links": [2]},
+        {"name": "VAE", "type": "VAE", "links": [3]}
+      ],
+      "properties": {},
+      "widgets_values": ["sd_xl_base_1.0.safetensors"]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 3, 0, "MODEL"],
+    [2, 1, 1, 4, 0, "CLIP"]
+  ],
+  "version": 0.4
+}
+```
+
+### Node Structure
+
+Each node in the workflow contains:
+
+<ParamField path="id" type="integer" required>
+  Unique identifier for the node
+</ParamField>
+
+<ParamField path="type" type="string" required>
+  The class type of the node (e.g., "CheckpointLoaderSimple", "KSampler")
+</ParamField>
+
+<ParamField path="inputs" type="array">
+  Input connections and values for the node
+</ParamField>
+
+<ParamField path="outputs" type="array">
+  Output definitions with types and connected links
+</ParamField>
+
+<ParamField path="widgets_values" type="array">
+  Configuration values for node parameters
+</ParamField>
+
+## Dynamic Prompt System
+
+ComfyUI uses a `DynamicPrompt` class to manage workflow execution:
+
+```python
+class DynamicPrompt:
+    def __init__(self, original_prompt):
+        # The original prompt provided by the user
+        self.original_prompt = original_prompt
+        # Extra graph pieces created during execution
+        self.ephemeral_prompt = {}
+        self.ephemeral_parents = {}
+        self.ephemeral_display = {}
+```
+
+<Info>
+**Ephemeral Nodes**: Nodes can dynamically create additional nodes during execution. These ephemeral nodes are tracked separately but execute as part of the same workflow.
+</Info>
+
+### Adding Ephemeral Nodes
+
+From `execution.py:566`:
+
+```python
+for node_id, node_info in new_graph.items():
+    new_node_ids.append(node_id)
+    display_id = node_info.get("override_display_id", unique_id)
+    dynprompt.add_ephemeral_node(node_id, node_info, unique_id, display_id)
+```
+
+## Workflow Execution
+
+### Execution Flow
+
+Workflow execution follows these stages:
+
+<Steps>
+  <Step title="Validation">
+    The workflow is validated using `validate_prompt()` to check for:
+    - Missing node types
+    - Invalid connections
+    - Missing required inputs
+    - Type mismatches
+  </Step>
+
+  <Step title="Queue Management">
+    Valid workflows are added to the `PromptQueue` with priority ordering:
+    
+    ```python
+    class PromptQueue:
+        def __init__(self, server):
+            self.mutex = threading.RLock()
+            self.not_empty = threading.Condition(self.mutex)
+            self.task_counter = 0
+            self.queue = []  # Heap-based priority queue
+            self.currently_running = {}
+            self.history = {}
+    ```
+  </Step>
+
+  <Step title="Node Execution">
+    Nodes execute in dependency order. Each node:
+    - Retrieves input data from connected nodes
+    - Executes its FUNCTION method
+    - Stores outputs in cache
+    - Updates execution state
+  </Step>
+
+  <Step title="Output Collection">
+    Output nodes are identified and their results collected for return to the user
+  </Step>
+</Steps>
+
+### Execution List
+
+The `ExecutionList` class manages execution order:
+
+```python
+execution_list = ExecutionList(dynamic_prompt, self.caches.outputs)
+current_outputs = self.caches.outputs.all_node_ids()
+for node_id in list(execute_outputs):
+    execution_list.add_node(node_id)
+```
+
+## Output Nodes
+
+Nodes are marked as output nodes using the `OUTPUT_NODE` class attribute:
+
+```python
+class SaveImage:
+    OUTPUT_NODE = True
+    
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": {
+            "images": ("IMAGE",),
+            "filename_prefix": ("STRING", {"default": "ComfyUI"})
+        }}
+```
+
+From `execution.py:1049-1051`:
+
+```python
+if hasattr(class_, 'OUTPUT_NODE') and class_.OUTPUT_NODE is True:
+    if partial_execution_list is None or x in partial_execution_list:
+        outputs.add(x)
+```
+
+<Warning>
+Workflows with no output nodes will fail validation with error type `prompt_no_outputs`.
+</Warning>
+
+## Subgraph Expansion
+
+Nodes can dynamically expand into subgraphs during execution:
+
+```python
+if 'expand' in r:
+    has_subgraph = True
+    new_graph = r['expand']
+    result = r.get("result", None)
+    if isinstance(result, ExecutionBlocker):
+        result = tuple([result] * len(obj.RETURN_TYPES))
+    subgraph_results.append((new_graph, result))
+```
+
+This allows nodes to:
+- Generate dynamic workflows based on input
+- Implement control flow (loops, conditionals)
+- Create reusable node groups
+
+## Execution Blocking
+
+Nodes can block execution with messages:
+
+```python
+class ExecutionBlocker:
+    def __init__(self, message):
+        self.message = message
+```
+
+When a node returns an `ExecutionBlocker`, execution halts and sends an error message to the client:
+
+```python
+mes = {
+    "prompt_id": prompt_id,
+    "node_id": unique_id,
+    "exception_message": f"Execution Blocked: {block.message}",
+    "exception_type": "ExecutionBlocked"
+}
+server.send_sync("execution_error", mes, server.client_id)
+```
+
+## Workflow Metadata
+
+<CardGroup cols={2}>
+  <Card title="Version" icon="code-branch">
+    The `version` field tracks workflow format compatibility
+  </Card>
+  
+  <Card title="Revision" icon="clock-rotate-left">
+    Incremental counter for workflow changes
+  </Card>
+  
+  <Card title="Node IDs" icon="hashtag">
+    `last_node_id` tracks the highest node ID used
+  </Card>
+  
+  <Card title="Link IDs" icon="link">
+    `last_link_id` tracks the highest link ID used
+  </Card>
+</CardGroup>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Workflow Organization">
+    - Group related nodes together visually
+    - Use reroute nodes for cleaner connections
+    - Name nodes descriptively in the `_meta.title` field
+  </Accordion>
+
+  <Accordion title="Error Handling">
+    - Always validate inputs before execution
+    - Use ExecutionBlocker for recoverable errors
+    - Check for required vs optional inputs
+  </Accordion>
+
+  <Accordion title="Performance">
+    - Minimize redundant nodes
+    - Leverage caching for repeated operations
+    - Use batch processing where possible
+  </Accordion>
+
+  <Accordion title="Reusability">
+    - Create subgraph blueprints for common patterns
+    - Use widget values for parameterization
+    - Document expected input/output types
+  </Accordion>
+</AccordionGroup>
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Nodes" icon="circle-nodes" href="/concepts/nodes">
+    Learn about the node system and node types
+  </Card>
+  
+  <Card title="Execution" icon="play" href="/concepts/execution">
+    Deep dive into the execution engine
+  </Card>
+  
+  <Card title="Models" icon="cube" href="/concepts/models">
+    Understanding model loading and management
+  </Card>
+</CardGroup>

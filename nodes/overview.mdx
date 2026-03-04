@@ -1,0 +1,74 @@
+---
+title: Node System Overview
+description: Understanding ComfyUI's node-based workflow system
+---
+
+ComfyUI uses a node-based system to create image generation workflows. Nodes are connected together to build complex pipelines, where each node performs a specific function in the image generation process.
+
+## Core Concepts
+
+### Node Types
+
+ComfyUI nodes are categorized by their function:
+
+- **Loaders**: Load models, checkpoints, LoRAs, VAEs, and other resources
+- **Conditioning**: Process text prompts and control image generation guidance
+- **Sampling**: Generate images through the denoising process
+- **Latent**: Manipulate images in latent space
+- **Image**: Process and save final images
+
+### Data Flow
+
+Nodes pass data between each other through typed connections:
+
+- `MODEL`: Diffusion models for denoising latents
+- `CLIP`: Text encoder models for processing prompts
+- `VAE`: Variational autoencoder for encoding/decoding between pixel and latent space
+- `CONDITIONING`: Encoded text prompts that guide generation
+- `LATENT`: Images in compressed latent space
+- `IMAGE`: Final pixel-space images
+
+## Basic Workflow Structure
+
+A typical ComfyUI workflow follows this pattern:
+
+1. **Load Resources** - Load checkpoint, VAE, and other models
+2. **Encode Prompts** - Convert text to conditioning using CLIP
+3. **Create Latent** - Generate empty latent or encode input image
+4. **Sample** - Denoise latent using model and conditioning
+5. **Decode** - Convert latent to pixel-space image
+6. **Save** - Output the final image
+
+## Node Categories
+
+### Loaders
+
+Load models and resources into the workflow. See [Loaders](/nodes/loaders) for details.
+
+### Conditioning
+
+Process text prompts and control how they guide generation. See [Conditioning](/nodes/conditioning) for details.
+
+### Sampling
+
+Generate images through iterative denoising. See [Sampling](/nodes/sampling) for details.
+
+### Latent Operations
+
+Manipulate images in latent space. See [Latent](/nodes/latent) for details.
+
+### Image Processing
+
+Process and save pixel-space images. See [Image](/nodes/image) for details.
+
+## Node Parameters
+
+Most nodes accept parameters that control their behavior:
+
+- **Required Parameters**: Must be provided for the node to function
+- **Optional Parameters**: Have default values but can be customized
+- **Advanced Parameters**: Hidden by default, for fine-tuning behavior
+
+## Custom Nodes
+
+ComfyUI supports custom nodes through the `custom_nodes` directory. Custom nodes extend functionality beyond the built-in nodes and can be installed from the community.

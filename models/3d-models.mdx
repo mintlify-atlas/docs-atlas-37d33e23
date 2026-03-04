@@ -1,0 +1,527 @@
+---
+title: 3D Models
+description: Guide to 3D model generation in ComfyUI using Hunyuan3D 2.0
+---
+
+ComfyUI supports 3D model generation through Hunyuan3D, enabling creation of 3D assets from images and text.
+
+## Hunyuan3D 2.0
+
+<Info>
+  Hunyuan3D 2.0 generates high-quality 3D models from single images or multiple views, outputting voxel representations that can be converted to meshes.
+</Info>
+
+### Architecture
+
+**Model Configuration:**
+- Image model: hunyuan3d2
+- Latent format: Hunyuan3Dv2
+- Memory usage factor: 3.5
+- Sampling: Flow matching (shift 1.0, multiplier 1.0)
+
+**Components:**
+- **Diffusion Model**: DiT-based 3D generator
+- **VAE**: 3D voxel compression/decompression
+- **CLIP Vision Encoder**: Image conditioning
+
+**Latent Dimensions:**
+- Channels: 64
+- Resolution: Configurable (default 3072 voxels)
+
+### Usage
+
+**Creating Empty Latent:**
+```python
+# Use EmptyLatentHunyuan3Dv2 node
+resolution = 3072    # Voxel resolution (1-8192)
+batch_size = 1       # Number of 3D models
+# Returns: {"samples": latent, "type": "hunyuan3dv2"}
+```
+
+**Single-View Conditioning:**
+```python
+# Use Hunyuan3Dv2Conditioning node
+# Requires CLIPVisionEncode output
+clip_vision_output = clip_vision.encode_image(input_image)
+# Returns: positive and negative conditioning
+```
+
+**Multi-View Conditioning:**
+```python
+# Use Hunyuan3Dv2ConditioningMultiView node
+front = clip_vision.encode_image(front_image)   # Optional
+left = clip_vision.encode_image(left_image)     # Optional  
+back = clip_vision.encode_image(back_image)     # Optional
+right = clip_vision.encode_image(right_image)   # Optional
+# At least one view required
+# Uses sinusoidal positional embeddings for view positions
+```
+
+**VAE Decoding:**
+```python
+# Use VAEDecodeHunyuan3D node
+samples = latent["samples"]
+vae = loaded_vae
+num_chunks = 8000          # Processing chunks (1000-500000)
+octree_resolution = 256    # Octree detail level (16-512)
+# Returns: VOXEL output
+```
+
+### Voxel to Mesh Conversion
+
+**Basic Conversion:**
+```python
+# Use VoxelToMeshBasic node
+voxel = vae_output
+threshold = 0.6       # Density threshold (-1.0 to 1.0)
+# Fast but produces blocky meshes
+# Returns: MESH (vertices and faces tensors)
+```
+
+**Advanced Conversion:**
+```python
+# Use VoxelToMesh node  
+algorithm = "surface net"  # or "basic"
+threshold = 0.6
+# Surface net: Smoother meshes, slower
+# Basic: Faster, more angular
+```
+
+**Surface Net Algorithm:**
+- Calculates surface intersections per voxel
+- Generates smoother, more organic shapes
+- Aligns faces with density gradients
+- Shows progress bar (can be slow for high resolution)
+
+**Basic Algorithm:**
+- Creates cube faces for each solid voxel
+- Removes internal faces
+- Much faster but blockier output
+
+### Mesh Export
+
+**Saving 3D Models:**
+```python
+# Use SaveGLB node (supports multiple formats)
+mesh = mesh_output         # From VoxelToMesh
+filename_prefix = "mesh/ComfyUI"
+# Exports as GLB (binary GLTF)
+# Embedded workflow metadata (if enabled)
+```
+
+**Supported Export Formats:**
+- GLB (binary glTF) - default and recommended
+- GLTF (JSON glTF)
+- OBJ
+- FBX  
+- STL
+- USDZ
+
+**GLB File Structure:**
+```json
+{
+  "asset": {"version": "2.0", "generator": "ComfyUI"},
+  "meshes": [{
+    "primitives": [{
+      "attributes": {"POSITION": 0},
+      "indices": 1,
+      "mode": 4  // TRIANGLES
+    }]
+  }]
+}
+```
+
+**Metadata Embedding:**
+- Workflow JSON stored in `asset.extras`
+- Includes prompt and generation settings
+- Disable with `--disable-metadata` flag
+
+---
+
+## Hunyuan3D 2.1
+
+### Architecture Updates
+
+**Model Configuration:**
+- Image model: hunyuan3d2_1  
+- Latent format: Hunyuan3Dv2_1
+- Same memory and performance characteristics
+
+**Improvements:**
+- Enhanced quality
+- Better geometry
+- Improved texture consistency
+
+**Usage:**
+- Identical nodes and workflow as 2.0
+- Drop-in replacement
+
+---
+
+## Hunyuan3D 2.0 Mini
+
+### Architecture
+
+**Model Configuration:**
+- Image model: hunyuan3d2
+- Depth: 8 (reduced from standard)
+- Latent format: Hunyuan3Dv2mini
+- Faster inference, lower quality
+
+**Use Cases:**
+- Rapid prototyping
+- Batch generation
+- Preview generation
+- Resource-constrained environments
+
+---
+
+## Data Types
+
+### VOXEL Type
+
+**Structure:**
+```python
+Types.VOXEL(
+    data: List[torch.Tensor]  # List of voxel grids
+)
+```
+
+**Voxel Grid Format:**
+- Shape: [depth, height, width]
+- Values: Density/occupancy (-1.0 to 1.0)
+- Normalized to [-1, 1] range
+
+### MESH Type
+
+**Structure:**
+```python
+Types.MESH(
+    vertices: torch.Tensor,  # Shape: [batch, num_vertices, 3]
+    faces: torch.Tensor      # Shape: [batch, num_faces, 3]
+)
+```
+
+**Coordinate System:**
+- Origin at center
+- Normalized to [-1, 1] range
+- Right-handed coordinate system
+- Faces use vertex indices (counter-clockwise winding)
+
+### File3D Type
+
+**Structure:**
+```python
+Types.File3D(
+    data: BytesIO,
+    format: str  # "glb", "gltf", "obj", "fbx", "stl", "usdz"
+)
+```
+
+**Supported in SaveGLB node:**
+- Can save File3D directly (bypasses mesh conversion)
+- Preserves original format or converts to GLB
+
+---
+
+## Workflow Examples
+
+### Single Image to 3D
+
+<Steps>
+
+<Step title="Load Image">
+  Use LoadImage to load reference image
+</Step>
+
+<Step title="Encode with CLIP Vision">
+  ```python
+  CLIPVisionLoader → CLIPVisionEncode
+  ```
+</Step>
+
+<Step title="Create Conditioning">
+  ```python
+  Hunyuan3Dv2Conditioning
+  # Returns positive and negative conditioning
+  ```
+</Step>
+
+<Step title="Create Empty Latent">
+  ```python
+  EmptyLatentHunyuan3Dv2
+  resolution = 3072
+  ```
+</Step>
+
+<Step title="Sample">
+  ```python
+  # Use KSampler or other sampling node
+  # Flow matching works best
+  steps = 20-50
+  cfg = 1.0
+  ```
+</Step>
+
+<Step title="Decode to Voxels">
+  ```python
+  VAEDecodeHunyuan3D
+  num_chunks = 8000
+  octree_resolution = 256
+  ```
+</Step>
+
+<Step title="Convert to Mesh">
+  ```python
+  VoxelToMesh
+  algorithm = "surface net"
+  threshold = 0.6
+  ```
+</Step>
+
+<Step title="Export">
+  ```python
+  SaveGLB
+  filename_prefix = "3d/my_model"
+  ```
+</Step>
+
+</Steps>
+
+### Multi-View 3D Reconstruction
+
+<Steps>
+
+<Step title="Prepare Images">
+  Load front, left, back, right views (at least one required)
+</Step>
+
+<Step title="Encode Each View">
+  ```python
+  # For each view:
+  CLIPVisionEncode
+  ```
+</Step>
+
+<Step title="Multi-View Conditioning">
+  ```python
+  Hunyuan3Dv2ConditioningMultiView
+  front = front_encoded
+  left = left_encoded
+  # etc.
+  ```
+</Step>
+
+<Step title="Continue as Single-View">
+  Same steps 4-8 as above
+</Step>
+
+</Steps>
+
+---
+
+## Model Files
+
+### Default Locations
+
+```
+ComfyUI/
+├── models/
+│   ├── checkpoints/
+│   │   └── hunyuan3d/
+│   │       ├── hunyuan3d_v2.safetensors
+│   │       ├── hunyuan3d_v2.1.safetensors
+│   │       └── hunyuan3d_v2_mini.safetensors
+│   ├── vae/
+│   │   └── hunyuan3d_vae.safetensors
+│   └── clip_vision/
+│       └── clip_vision_g.safetensors
+```
+
+### File Sizes
+
+**Hunyuan3D 2.0:**
+- DiffusionModel: ~8-12GB
+- VAE: ~2-3GB
+- CLIP Vision: ~1-2GB
+
+**Hunyuan3D 2.0 Mini:**
+- DiffusionModel: ~3-5GB (smaller depth)
+- Same VAE and CLIP Vision
+
+---
+
+## Performance Optimization
+
+### Memory Management
+
+<Warning>
+  3D generation requires significant VRAM for both generation and mesh conversion.
+</Warning>
+
+**VRAM Requirements:**
+- **Generation**: 8-16GB (depending on resolution)
+- **VAE Decode**: 4-8GB (depends on octree_resolution)
+- **Mesh Conversion**: 2-8GB (depends on voxel resolution and algorithm)
+
+**For 12GB GPUs:**
+```bash
+python main.py --lowvram
+```
+
+**For 8GB GPUs:**
+```bash  
+python main.py --lowvram --normalvram
+```
+
+### Resolution Settings
+
+**Latent Resolution:**
+- Low quality (fast): 1536-2048 voxels
+- Medium quality: 2048-3072 voxels  
+- High quality: 3072-4096 voxels
+- Ultra quality (slow): 4096-8192 voxels
+
+**Octree Resolution:**
+- Preview: 128
+- Standard: 256
+- High detail: 384-512
+- Must be power of 2
+
+**Processing Chunks:**
+- Lower = slower but more memory efficient
+- Higher = faster but more VRAM
+- Default 8000 works well for most GPUs
+- Range: 1000-500000
+
+### Speed Optimization
+
+**Generation:**
+- Use fewer sampling steps (20-30 sufficient)
+- CFG scale of 1.0 is often best for 3D
+- Mini model for rapid iteration
+
+**Mesh Conversion:**
+- Start with basic algorithm for preview
+- Use surface net for final export
+- Lower threshold = more geometry = slower
+- Higher threshold = less geometry = faster
+
+**Threshold Guidelines:**
+- 0.5: Maximum detail (slow, large files)
+- 0.6: Good balance (default)
+- 0.7-0.8: Simplified geometry (fast, smaller files)
+
+---
+
+## Advanced Techniques
+
+### Multi-Resolution Workflow
+
+1. **Preview** (resolution=1536, basic algorithm, threshold=0.7)
+2. **Refine** (resolution=3072, surface net, threshold=0.6)
+3. **Final** (resolution=4096, surface net, threshold=0.5)
+
+### Batch Processing
+
+```python
+# Generate multiple variations
+batch_size = 4  # in EmptyLatentHunyuan3Dv2
+# Process each in mesh conversion
+# Exports 4 separate GLB files
+```
+
+### View-Specific Conditioning
+
+**Turntable Setup:**
+- Use front view only for symmetric objects
+- Add left/right for asymmetric objects  
+- Add back view for complete coverage
+
+**Optimal View Angles:**
+- Front: 0°
+- Left: 90°
+- Back: 180°
+- Right: 270°
+
+---
+
+## Export and Integration
+
+### 3D Software Compatibility
+
+**Blender:**
+- Import GLB directly (File → Import → glTF 2.0)
+- Preserves geometry and structure
+- No materials/textures (geometry only)
+
+**Unity:**
+- Drag GLB into Assets folder
+- Auto-converts to prefab
+
+**Unreal Engine:**
+- Import via Datasmith or FBX export from Blender
+- GLB requires plugin
+
+**Maya/3ds Max:**
+- Export as FBX for better compatibility
+- Or import GLB via plugins
+
+### Post-Processing
+
+**Recommended Workflow:**
+1. Import mesh into Blender
+2. Apply Remesh modifier (if needed)
+3. Add materials and textures
+4. UV unwrap
+5. Bake textures from reference image
+6. Export to final format
+
+### File Size Optimization
+
+**Reduce Polygon Count:**
+- Increase threshold value (0.7-0.8)
+- Use Blender's Decimate modifier
+
+**Compress:**
+- GLB is already compressed
+- Draco compression for web use (via gltf-pipeline)
+
+---
+
+## Troubleshooting
+
+### Common Issues
+
+**Empty/No Geometry:**
+- Threshold too high (reduce to 0.5-0.6)
+- Invalid input image (needs clear subject)
+- Insufficient sampling steps
+
+**Blocky Meshes:**
+- Use surface net algorithm instead of basic
+- Increase latent resolution
+- Increase octree_resolution
+
+**VRAM Errors:**
+- Reduce resolution (3072 → 2048)
+- Reduce octree_resolution (256 → 128)
+- Reduce num_chunks (8000 → 4000)
+- Enable --lowvram flag
+
+**Slow Generation:**
+- Use mini model for previews
+- Reduce resolution
+- Use basic algorithm for quick tests
+
+**Inverted/Wrong Normals:**
+- Blender: Select all → Mesh → Normals → Recalculate Outside
+- Or flip winding order in code
+
+---
+
+## Resources
+
+- [Hunyuan3D 2.0 Tutorial](https://docs.comfy.org/tutorials/3d/hunyuan3D-2)
+- [Official Examples](https://comfyanonymous.github.io/ComfyUI_examples/)
+- [glTF Specification](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html)

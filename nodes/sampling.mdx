@@ -1,0 +1,237 @@
+---
+title: Sampling Nodes
+description: KSampler and sampling nodes for image generation
+---
+
+Sampling nodes generate images by iteratively denoising latent images using a diffusion model guided by conditioning.
+
+## Basic Sampling
+
+### KSampler
+
+The main node for generating images through the sampling process.
+
+**Category**: `sampling`
+
+<ParamField path="model" type="MODEL" required>
+  The diffusion model used for denoising the latent
+</ParamField>
+
+<ParamField path="seed" type="int" default="0">
+  Random seed for noise generation. Range: 0 to 18446744073709551615
+</ParamField>
+
+<ParamField path="steps" type="int" default="20">
+  Number of denoising steps. More steps = higher quality but slower. Range: 1 to 10000
+</ParamField>
+
+<ParamField path="cfg" type="float" default="8.0">
+  Classifier-Free Guidance scale. Higher values follow the prompt more closely. Range: 0.0 to 100.0
+</ParamField>
+
+<ParamField path="sampler_name" type="string" required>
+  The sampling algorithm to use (e.g., `euler`, `euler_a`, `dpmpp_2m`, `dpmpp_2m_sde`, `heun`, `dpm2`, etc.)
+</ParamField>
+
+<ParamField path="scheduler" type="string" required>
+  Controls the noise schedule (e.g., `normal`, `karras`, `exponential`, `sgm_uniform`, `simple`, `ddim_uniform`)
+</ParamField>
+
+<ParamField path="positive" type="CONDITIONING" required>
+  The positive prompt conditioning (what you want to generate)
+</ParamField>
+
+<ParamField path="negative" type="CONDITIONING" required>
+  The negative prompt conditioning (what you want to avoid)
+</ParamField>
+
+<ParamField path="latent_image" type="LATENT" required>
+  The latent to denoise (from EmptyLatentImage for txt2img, or VAEEncode for img2img)
+</ParamField>
+
+<ParamField path="denoise" type="float" default="1.0">
+  Amount of denoising. 1.0 = full denoising, lower values preserve more of the input. Range: 0.0 to 1.0
+</ParamField>
+
+**Returns**:
+- `LATENT`: The denoised latent image
+
+**Description**: Uses the provided model, positive and negative conditioning to denoise the latent image. This is the core image generation node.
+
+**Common Sampler Algorithms**:
+- `euler`: Fast, good quality, deterministic
+- `euler_a`: Ancestral euler, more creative but non-deterministic
+- `dpmpp_2m`: DPM++ 2M, high quality with fewer steps
+- `dpmpp_2m_sde`: DPM++ 2M SDE, higher quality but slower
+- `dpmpp_3m_sde`: DPM++ 3M SDE, very high quality
+- `heun`: High quality but slow (2x function evaluations)
+- `dpm_fast`: Fast sampling
+- `ddim`: Classic DDIM sampler
+- `uni_pc`: UniPC sampler
+- `lcm`: Latent Consistency Model sampler (requires LCM LoRA)
+
+**Common Schedulers**:
+- `normal`: Standard linear schedule
+- `karras`: Karras schedule, often better quality
+- `exponential`: Exponential decay schedule
+- `sgm_uniform`: Stable diffusion 3 schedule
+- `simple`: Simple schedule
+- `ddim_uniform`: Uniform schedule for DDIM
+
+**CFG Scale Guidelines**:
+- `1.0-3.0`: Very loose adherence, highly creative
+- `4.0-7.0`: Balanced creativity and prompt following
+- `7.0-12.0`: Strong prompt adherence
+- `12.0+`: Very strict, may reduce quality
+
+## Advanced Sampling
+
+### KSamplerAdvanced
+
+Advanced sampler with fine control over the sampling process.
+
+**Category**: `sampling`
+
+<ParamField path="model" type="MODEL" required>
+  The diffusion model
+</ParamField>
+
+<ParamField path="add_noise" type="string" default="enable">
+  Whether to add noise at the start. Options: `enable`, `disable`
+</ParamField>
+
+<ParamField path="noise_seed" type="int" default="0">
+  Random seed for noise. Range: 0 to 18446744073709551615
+</ParamField>
+
+<ParamField path="steps" type="int" default="20">
+  Total number of sampling steps. Range: 1 to 10000
+</ParamField>
+
+<ParamField path="cfg" type="float" default="8.0">
+  Classifier-Free Guidance scale. Range: 0.0 to 100.0
+</ParamField>
+
+<ParamField path="sampler_name" type="string" required>
+  The sampling algorithm
+</ParamField>
+
+<ParamField path="scheduler" type="string" required>
+  The noise scheduler
+</ParamField>
+
+<ParamField path="positive" type="CONDITIONING" required>
+  Positive conditioning
+</ParamField>
+
+<ParamField path="negative" type="CONDITIONING" required>
+  Negative conditioning
+</ParamField>
+
+<ParamField path="latent_image" type="LATENT" required>
+  Input latent
+</ParamField>
+
+<ParamField path="start_at_step" type="int" default="0">
+  Which step to start sampling at. Range: 0 to 10000
+</ParamField>
+
+<ParamField path="end_at_step" type="int" default="10000">
+  Which step to end sampling at. Range: 0 to 10000
+</ParamField>
+
+<ParamField path="return_with_leftover_noise" type="string" default="disable">
+  Whether to return without final denoising. Options: `disable`, `enable`
+</ParamField>
+
+**Returns**:
+- `LATENT`: The denoised latent
+
+**Description**: Provides advanced control over the sampling process. Useful for:
+- Multi-stage sampling (different prompts at different steps)
+- Noise control for advanced workflows
+- Partial sampling for refinement
+
+**Use Cases**:
+
+**Two-Stage Sampling**:
+1. First KSamplerAdvanced: `start_at_step=0`, `end_at_step=15`, `return_with_leftover_noise=enable`
+2. Second KSamplerAdvanced: `start_at_step=15`, `end_at_step=20`, different prompt
+
+**Refining**:
+- Use `add_noise=disable` to refine an existing latent without adding noise
+
+## Sampling Parameters Guide
+
+### Steps
+
+More steps generally produce better quality but take longer:
+- `15-20`: Fast, good for testing
+- `20-30`: Standard quality
+- `30-50`: High quality
+- `50+`: Diminishing returns
+
+Some samplers (like `dpmpp_2m`) produce good results with fewer steps.
+
+### CFG (Classifier-Free Guidance)
+
+Controls how closely the output matches the prompt:
+- Too low (< 3): Image may not match prompt
+- Optimal (7-10): Good balance
+- Too high (> 15): May introduce artifacts
+
+Different models have different optimal CFG ranges. SD1.5 typically uses 7-12, while SDXL often works well at 4-8.
+
+### Denoise Strength
+
+Controls how much the input is changed:
+- `1.0`: Complete regeneration (txt2img)
+- `0.7-0.9`: Strong changes while preserving composition
+- `0.4-0.6`: Moderate changes, refinement
+- `0.1-0.3`: Subtle changes, details only
+- `0.0`: No change
+
+Used for img2img workflows where you want to modify an existing image.
+
+### Seed
+
+Controls randomness:
+- Same seed with same settings = same image
+- Different seeds = variations
+- `control_after_generate` setting:
+  - `fixed`: Keep same seed
+  - `increment`: Add 1 to seed each generation
+  - `decrement`: Subtract 1 each generation
+  - `randomize`: Use random seed each time
+
+## Workflow Examples
+
+### Text to Image (txt2img)
+
+1. `EmptyLatentImage` → creates blank latent
+2. `CLIPTextEncode` (positive) → encodes prompt
+3. `CLIPTextEncode` (negative) → encodes negative prompt
+4. `KSampler` → generates image
+5. `VAEDecode` → converts to pixels
+
+### Image to Image (img2img)
+
+1. `LoadImage` → loads input image
+2. `VAEEncode` → converts to latent
+3. `KSampler` with `denoise < 1.0` → modifies image
+4. `VAEDecode` → converts back to pixels
+
+### Inpainting
+
+1. `LoadImage` → loads image
+2. `LoadImageMask` → loads mask
+3. `VAEEncodeForInpaint` → prepares latent with mask
+4. `KSampler` → generates in masked area
+5. `VAEDecode` → final image
+
+### Upscaling (Latent Upscale)
+
+1. Generate base image at low resolution
+2. `LatentUpscale` → upscale latent
+3. `KSampler` with `denoise=0.4-0.6` → refine details
+4. `VAEDecode` → high-res image

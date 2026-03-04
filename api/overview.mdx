@@ -1,0 +1,135 @@
+---
+title: REST API Overview
+description: Introduction to the ComfyUI REST API
+---
+
+## Introduction
+
+The ComfyUI REST API allows you to programmatically interact with ComfyUI to queue prompts, monitor execution, and manage workflows. The API uses JSON for request and response payloads.
+
+## Base URL
+
+The default base URL for the ComfyUI API is:
+
+```
+http://127.0.0.1:8188
+```
+
+All API endpoints can be accessed with an optional `/api` prefix for easier routing:
+
+```
+http://127.0.0.1:8188/api/{endpoint}
+```
+
+Both formats are supported (e.g., `/prompt` and `/api/prompt`).
+
+## Authentication
+
+### API Nodes Authentication
+
+If your workflow contains API nodes, you can include a Comfy API key in the `extra_data` field of your request payload:
+
+```json
+{
+  "prompt": { /* your workflow */ },
+  "extra_data": {
+    "api_key_comfy_org": "comfyui-87d01e28d..."
+  }
+}
+```
+
+<Note>
+  Generate your API key at [https://platform.comfy.org/login](https://platform.comfy.org/login)
+</Note>
+
+## Request Format
+
+All POST requests should:
+- Use `Content-Type: application/json` header
+- Send data as JSON-encoded request body
+
+## Response Format
+
+All successful responses return JSON with appropriate HTTP status codes:
+
+- `200` - Success
+- `400` - Bad request (invalid prompt or parameters)
+- `403` - Forbidden (security violation)
+- `404` - Resource not found
+
+## CORS Support
+
+CORS can be enabled using the `--enable-cors-header` command-line argument when starting ComfyUI. When running locally without CORS enabled, the server includes Origin validation for security.
+
+## WebSocket API
+
+In addition to the REST API, ComfyUI provides a WebSocket endpoint for real-time updates:
+
+```
+ws://127.0.0.1:8188/ws?clientId={client_id}
+```
+
+The WebSocket connection receives:
+- Execution status updates
+- Preview images during generation
+- Queue status changes
+- Error notifications
+
+<Tip>
+  Use the WebSocket API in combination with the REST API to monitor prompt execution in real-time. See the [websockets_api_example.py](https://github.com/comfyanonymous/ComfyUI/blob/master/script_examples/websockets_api_example.py) for a complete example.
+</Tip>
+
+## Rate Limiting
+
+There are no built-in rate limits, but be mindful of:
+- Server processing capacity
+- Queue size limits
+- Maximum upload size (configurable via `--max-upload-size` argument)
+
+## Common Workflow
+
+1. **Export your workflow**: Use "File → Export (API)" in the ComfyUI interface
+2. **Queue the prompt**: POST to `/prompt` endpoint
+3. **Monitor execution**: Connect to WebSocket or poll `/history/{prompt_id}`
+4. **Retrieve results**: GET images from `/view` endpoint using history data
+
+## Example: Basic API Usage
+
+```python
+import json
+from urllib import request
+
+# Queue a prompt
+prompt = {
+    "3": {
+        "class_type": "KSampler",
+        "inputs": {
+            "seed": 12345,
+            "steps": 20,
+            # ... other parameters
+        }
+    },
+    # ... other nodes
+}
+
+data = json.dumps({"prompt": prompt}).encode('utf-8')
+req = request.Request("http://127.0.0.1:8188/prompt", data=data)
+response = request.urlopen(req)
+result = json.loads(response.read())
+
+print(f"Queued prompt ID: {result['prompt_id']}")
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Queue Prompts" icon="play" href="/api/prompt">
+    Learn how to submit workflows for execution
+  </Card>
+  <Card title="View History" icon="clock-rotate-left" href="/api/history">
+    Retrieve execution results and outputs
+  </Card>
+  <Card title="Manage Queue" icon="list" href="/api/queue">
+    Control the execution queue
+  </Card>
+</CardGroup>

@@ -1,0 +1,323 @@
+---
+title: Quantization System
+description: Learn about ComfyUI's quantization system, FP8/FP16 formats, and QuantizedTensor implementation
+---
+
+## Overview
+
+Quantization in ComfyUI enables you to reduce model memory footprint and increase throughput by converting high-precision weights to lower precision formats like FP8. This is achieved through a sophisticated system using `QuantizedTensor` and layout-based quantization strategies.
+
+## How Quantization Works
+
+Quantization maps high-precision values (FP16/FP32) to lower precision formats with minimal accuracy loss. The key challenge is managing dynamic range differences:
+
+- **FP16 range**: (-65,504, 65,504)
+- **FP8 E4M3 range**: (-448, 448)
+- **FP8 E5M2 range**: (-57,344, 57,344)
+
+### Scaling Factor Method
+
+ComfyUI uses per-tensor absolute-maximum scaling to map values into the quantized format's range:
+
+```python
+absmax = max(abs(tensor))
+scale = amax / max_dynamic_range_low_precision
+
+# Quantization
+tensor_q = (tensor / scale).to(low_precision_dtype)
+
+# De-Quantization
+tensor_dq = tensor_q.to(fp16) * scale
+```
+
+<Note>
+  The scaling factor is additional metadata needed to interpret quantized values, making these "derived datatypes".
+</Note>
+
+## Architecture
+
+ComfyUI's quantization system uses a three-layer architecture:
+
+```
+QuantizedTensor (torch.Tensor subclass)
+  ↓ __torch_dispatch__
+Two-Level Registry (generic + layout handlers)
+  ↓
+MixedPrecisionOps + Metadata Detection
+```
+
+### QuantizedTensor
+
+The `QuantizedTensor` class (defined in `comfy/quant_ops.py`) is a subclass of `torch.Tensor` that represents quantized data with associated metadata.
+
+### Layout Classes
+
+A `Layout` class defines how a specific quantization format behaves:
+
+```python
+from comfy.quant_ops import QuantizedLayout
+
+class MyLayout(QuantizedLayout):
+    @classmethod
+    def quantize(cls, tensor, **kwargs):
+        # Convert to quantized format
+        qdata = ...
+        params = {'scale': ..., 'orig_dtype': tensor.dtype}
+        return qdata, params
+    
+    @staticmethod
+    def dequantize(qdata, scale, orig_dtype, **kwargs):
+        return qdata.to(orig_dtype) * scale
+```
+
+## Built-in Quantization Formats
+
+ComfyUI supports several quantization formats defined in `QUANT_ALGOS`:
+
+<CodeGroup>
+```python FP8 E4M3
+"float8_e4m3fn": {
+    "storage_t": torch.float8_e4m3fn,
+    "parameters": {"weight_scale", "input_scale"},
+    "comfy_tensor_layout": "TensorCoreFP8E4M3Layout",
+}
+```
+
+```python FP8 E5M2
+"float8_e5m2": {
+    "storage_t": torch.float8_e5m2,
+    "parameters": {"weight_scale", "input_scale"},
+    "comfy_tensor_layout": "TensorCoreFP8E5M2Layout",
+}
+```
+
+```python NVFP4
+"nvfp4": {
+    "storage_t": torch.uint8,
+    "parameters": {"weight_scale", "weight_scale_2", "input_scale"},
+    "comfy_tensor_layout": "TensorCoreNVFP4Layout",
+    "group_size": 16,
+}
+```
+</CodeGroup>
+
+### TensorCore FP8 Layouts
+
+<Tabs>
+  <Tab title="E4M3">
+    **FP8 E4M3** (4-bit exponent, 3-bit mantissa) provides better precision for most deep learning workloads:
+    
+    ```python
+    from comfy.quant_ops import TensorCoreFP8E4M3Layout, QuantizedTensor
+    
+    class TensorCoreFP8E4M3Layout(_TensorCoreFP8LayoutBase):
+        FP8_DTYPE = torch.float8_e4m3fn
+    ```
+    
+    Range: -448 to 448
+  </Tab>
+  
+  <Tab title="E5M2">
+    **FP8 E5M2** (5-bit exponent, 2-bit mantissa) provides wider dynamic range:
+    
+    ```python
+    from comfy.quant_ops import TensorCoreFP8E5M2Layout
+    
+    class TensorCoreFP8E5M2Layout(_TensorCoreFP8LayoutBase):
+        FP8_DTYPE = torch.float8_e5m2
+    ```
+    
+    Range: -57,344 to 57,344
+  </Tab>
+</Tabs>
+
+## Operation Registry
+
+ComfyUI uses two registry systems for quantized operations:
+
+### Generic Registry
+
+Handles operations common to all quantized formats (`.to()`, `.clone()`, `.reshape()`).
+
+### Layout-Specific Registry
+
+Allows fast-path implementations for specific operations:
+
+```python
+from comfy.quant_ops import register_layout_op
+
+@register_layout_op(torch.ops.aten.linear.default, MyLayout)
+def my_linear(func, args, kwargs):
+    # Extract tensors, call optimized kernel
+    ...
+```
+
+<Info>
+  When `torch.nn.functional.linear()` is called with QuantizedTensor arguments, `__torch_dispatch__` automatically routes to the registered implementation.
+</Info>
+
+### Fallback Behavior
+
+For any unsupported operation, QuantizedTensor automatically:
+1. Calls `dequantize` to convert back to high precision
+2. Dispatches using the high-precision implementation
+
+## Mixed Precision Operations
+
+The `MixedPrecisionOps` class enables per-layer quantization decisions, allowing different layers to use different precisions.
+
+```python
+class MixedPrecisionOps(disable_weight_init):
+    _layer_quant_config = {}  # Maps layer names to quantization configs
+    _compute_dtype = torch.bfloat16  # Default compute / dequantize precision
+```
+
+### How It Works
+
+During model loading, the custom `Linear._load_from_state_dict()` method inspects each layer:
+
+1. **Not in config**: Load weight as regular tensor in `_compute_dtype`
+2. **In config**: Load weight as `QuantizedTensor` with specified layout (e.g., `TensorCoreFP8Layout`)
+
+<Warning>
+  Not all layers tolerate quantization equally. Sensitive operations like final projections should be kept in higher precision, while compute-heavy matmuls can be quantized.
+</Warning>
+
+## Checkpoint Format
+
+Quantized checkpoints are stored as standard safetensors files with:
+
+- Quantized weight tensors (sometimes using different storage datatype, e.g., uint8 for FP8)
+- Associated scaling parameters
+- `_quantization_metadata` JSON entry
+
+### Scaling Parameters
+
+ComfyUI defines 4 possible scaling parameters:
+
+<ResponseField name="weight_scale" type="tensor">
+  Quantization scalers for the weights
+</ResponseField>
+
+<ResponseField name="weight_scale_2" type="tensor">
+  Global scalers in the context of double scaling
+</ResponseField>
+
+<ResponseField name="pre_quant_scale" type="tensor">
+  Scalers used for smoothing salient weights
+</ResponseField>
+
+<ResponseField name="input_scale" type="tensor">
+  Quantization scalers for the activations
+</ResponseField>
+
+### Parameter Requirements by Format
+
+| Format | Storage dtype | weight_scale | weight_scale_2 | pre_quant_scale | input_scale |
+|--------|---------------|--------------|----------------|-----------------|-------------|
+| float8_e4m3fn | float32 | float32 (scalar) | - | - | float32 (scalar) |
+
+### Metadata Structure
+
+The `_quantization_metadata` contains:
+
+```json
+{
+  "_quantization_metadata": {
+    "format_version": "1.0",
+    "layers": {
+      "model.layers.0.mlp.up_proj": "float8_e4m3fn",
+      "model.layers.0.mlp.down_proj": "float8_e4m3fn",
+      "model.layers.1.mlp.up_proj": "float8_e4m3fn"
+    }
+  }
+}
+```
+
+## Creating Quantized Checkpoints
+
+### Weight Quantization
+
+Weight quantization computes the scaling factor directly from the weight tensor:
+
+```python
+from comfy.quant_ops import TensorCoreFP8E4M3Layout
+
+# Quantize a weight tensor
+weight = model.layer.weight
+qdata, params = TensorCoreFP8E4M3Layout.quantize(
+    weight, 
+    scale="recalculate",  # Auto-compute scale
+    stochastic_rounding=0  # Deterministic rounding
+)
+```
+
+### Activation Quantization (Calibration)
+
+Activation quantization requires post-training calibration (PTQ):
+
+<Steps>
+  <Step title="Collect Statistics">
+    Run inference on N representative samples
+  </Step>
+  
+  <Step title="Track Activations">
+    Record the absolute maximum (amax) of inputs to each quantized layer
+  </Step>
+  
+  <Step title="Compute Scales">
+    Derive `input_scale` from collected statistics
+  </Step>
+  
+  <Step title="Store in Checkpoint">
+    Save `input_scale` parameters alongside weights
+  </Step>
+</Steps>
+
+<Tip>
+  The calibration dataset should be representative of your target use case. For diffusion models, use a diverse set of prompts and generation parameters.
+</Tip>
+
+## Stochastic Rounding
+
+ComfyUI supports stochastic rounding for better quantization quality:
+
+```python
+qdata, params = TensorCoreFP8E4M3Layout.quantize(
+    tensor,
+    scale="recalculate",
+    stochastic_rounding=42  # Seed for reproducibility
+)
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Choose the Right Format" icon="sliders">
+    Use E4M3 for most workloads, E5M2 when you need wider dynamic range
+  </Card>
+  
+  <Card title="Mixed Precision" icon="layer-group">
+    Keep sensitive layers in FP16/BF16, quantize compute-heavy layers
+  </Card>
+  
+  <Card title="Calibrate Properly" icon="chart-line">
+    Use diverse, representative data for activation quantization calibration
+  </Card>
+  
+  <Card title="Monitor Quality" icon="eye">
+    Test quantized models thoroughly to ensure acceptable accuracy
+  </Card>
+</CardGroup>
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Memory Management" href="/advanced/memory-management" icon="memory">
+    Learn about VRAM optimization and model offloading
+  </Card>
+  
+  <Card title="Custom Nodes" href="/advanced/custom-nodes" icon="puzzle-piece">
+    Create custom nodes that work with quantized models
+  </Card>
+</CardGroup>

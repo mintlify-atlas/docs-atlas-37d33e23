@@ -1,0 +1,377 @@
+---
+title: ComfyUI Manager Overview
+description: Learn about ComfyUI Manager for installing and managing custom nodes and extensions
+---
+
+ComfyUI Manager is an extension that allows you to easily install, update, and manage custom nodes for ComfyUI.
+
+## What is ComfyUI Manager?
+
+ComfyUI Manager provides a convenient interface for:
+
+- Installing custom nodes from repositories
+- Updating existing custom nodes
+- Managing node dependencies
+- Browsing available extensions
+- Installing missing nodes from workflows
+
+<Note>
+ComfyUI Manager is integrated into ComfyUI but must be explicitly enabled.
+</Note>
+
+## Installation
+
+### Install Dependencies
+
+First, install the manager dependencies:
+
+```bash
+pip install -r manager_requirements.txt
+```
+
+### Enable the Manager
+
+Start ComfyUI with the `--enable-manager` flag:
+
+```bash
+python main.py --enable-manager
+```
+
+<Tip>
+Add this flag to your startup script to always run with the manager enabled.
+</Tip>
+
+## Command Line Options
+
+ComfyUI Manager supports several command line flags:
+
+<ParamField path="--enable-manager" type="flag">
+  Enable ComfyUI-Manager functionality
+</ParamField>
+
+<ParamField path="--enable-manager-legacy-ui" type="flag">
+  Use the legacy manager UI instead of the new UI (requires `--enable-manager`)
+</ParamField>
+
+<ParamField path="--disable-manager-ui" type="flag">
+  Disable the manager UI and endpoints while keeping background features like security checks (requires `--enable-manager`)
+</ParamField>
+
+### Examples
+
+<CodeGroup>
+```bash Standard Usage
+python main.py --enable-manager
+```
+
+```bash Legacy UI
+python main.py --enable-manager --enable-manager-legacy-ui
+```
+
+```bash Background Only
+python main.py --enable-manager --disable-manager-ui
+```
+</CodeGroup>
+
+## Using the Manager UI
+
+### Accessing the Manager
+
+Once enabled, you can access the manager through the ComfyUI interface:
+
+1. Open ComfyUI in your browser
+2. Click the **Manager** button in the menu
+3. Browse available custom nodes and extensions
+
+### Installing Custom Nodes
+
+To install a custom node:
+
+<Steps>
+  <Step title="Open the Manager">
+    Click the Manager button in the ComfyUI interface
+  </Step>
+  
+  <Step title="Browse Extensions">
+    Browse or search for the extension you want to install
+  </Step>
+  
+  <Step title="Install">
+    Click the Install button next to the extension
+  </Step>
+  
+  <Step title="Restart">
+    Restart ComfyUI to load the new nodes
+  </Step>
+</Steps>
+
+### Updating Custom Nodes
+
+Keep your custom nodes up to date:
+
+1. Open the Manager
+2. Navigate to the **Update** section
+3. Select nodes to update
+4. Click **Update** and restart ComfyUI
+
+## Installing Missing Nodes
+
+When you load a workflow that uses custom nodes you don't have installed, the manager can help:
+
+<Steps>
+  <Step title="Load Workflow">
+    Load a workflow with missing nodes
+  </Step>
+  
+  <Step title="Automatic Detection">
+    The manager detects missing nodes
+  </Step>
+  
+  <Step title="Install Prompt">
+    Click the prompt to install missing nodes
+  </Step>
+  
+  <Step title="Restart">
+    Restart ComfyUI to use the workflow
+  </Step>
+</Steps>
+
+<Warning>
+Always review what you're installing before proceeding. Only install custom nodes from trusted sources.
+</Warning>
+
+## Custom Node Translations
+
+ComfyUI Manager supports internationalization through custom node translations.
+
+### Translation Structure
+
+Custom nodes can provide translations in a `locales/` folder:
+
+```
+custom_nodes/
+└── my_custom_node/
+    └── locales/
+        ├── en/
+        │   ├── main.json
+        │   ├── commands.json
+        │   └── settings.json
+        ├── zh/
+        │   └── main.json
+        └── ja/
+            └── main.json
+```
+
+### Translation Files
+
+<AccordionGroup>
+  <Accordion title="main.json" icon="language">
+    Main node translations including node names and descriptions:
+    
+    ```json
+    {
+      "nodeDefs": {
+        "MyNode": {
+          "name": "My Node",
+          "description": "Does something cool"
+        }
+      }
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="commands.json" icon="terminal">
+    Command and menu translations:
+    
+    ```json
+    {
+      "commands": {
+        "myCommand": "My Command"
+      }
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="settings.json" icon="gear">
+    Settings panel translations:
+    
+    ```json
+    {
+      "settings": {
+        "mySetting": "My Setting"
+      }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Workflow Templates
+
+Custom nodes can provide example workflows that appear in the manager.
+
+### Providing Templates
+
+Place example workflows in an `example_workflows/` folder:
+
+```
+custom_nodes/
+└── my_custom_node/
+    ├── __init__.py
+    └── example_workflows/
+        ├── basic_usage.json
+        ├── advanced_example.json
+        └── creative_workflow.json
+```
+
+<Note>
+The manager also recognizes folders named `example`, `examples`, `workflow`, or `workflows`, but `example_workflows` is recommended.
+</Note>
+
+### Accessing Templates
+
+Workflow templates are available through the manager API:
+
+```javascript
+// Fetch available templates
+fetch('/workflow_templates')
+  .then(res => res.json())
+  .then(templates => {
+    // templates = {"my_custom_node": ["basic_usage", "advanced_example"]}
+    console.log(templates);
+  });
+
+// Load a specific template
+fetch('/api/workflow_templates/my_custom_node/basic_usage.json')
+  .then(res => res.json())
+  .then(workflow => {
+    // Load workflow into ComfyUI
+  });
+```
+
+## Manager API Endpoints
+
+The manager exposes several HTTP endpoints:
+
+### GET /workflow_templates
+
+Returns a map of custom node names to their available workflow templates:
+
+```json
+{
+  "custom_node_1": ["example1", "example2"],
+  "custom_node_2": ["demo"]
+}
+```
+
+### GET /api/workflow_templates/{node_name}/{template_name}.json
+
+Returns the workflow JSON for a specific template:
+
+```bash
+curl http://localhost:8188/api/workflow_templates/my_node/example.json
+```
+
+### GET /i18n
+
+Returns all translations from custom nodes:
+
+```json
+{
+  "en": {
+    "nodeDefs": {...},
+    "commands": {...},
+    "settings": {...}
+  },
+  "zh": {...}
+}
+```
+
+## Security Features
+
+The manager includes security features even when the UI is disabled:
+
+### Background Security Checks
+
+With `--enable-manager --disable-manager-ui`, you get:
+
+- Dependency verification
+- Security checks for custom nodes
+- Installation validation
+- Update notifications
+
+<Warning>
+Even with the manager disabled, ComfyUI loads all custom nodes from the `custom_nodes/` directory. Only install extensions you trust.
+</Warning>
+
+## Troubleshooting
+
+### Manager Not Appearing
+
+If the manager UI doesn't appear:
+
+<Steps>
+  <Step title="Check Startup">
+    Ensure you're using `--enable-manager` flag
+  </Step>
+  
+  <Step title="Verify Dependencies">
+    Run `pip install -r manager_requirements.txt`
+  </Step>
+  
+  <Step title="Check Console">
+    Look for error messages in the terminal
+  </Step>
+  
+  <Step title="Clear Cache">
+    Clear your browser cache and reload
+  </Step>
+</Steps>
+
+### Installation Failures
+
+If custom node installation fails:
+
+1. **Check dependencies**: Some nodes require specific Python packages
+2. **Review logs**: Check the console output for error messages
+3. **Manual installation**: Try installing manually via git clone
+4. **Compatibility**: Ensure the node is compatible with your ComfyUI version
+
+### Update Issues
+
+If updates aren't working:
+
+- Ensure you have write permissions in the `custom_nodes/` directory
+- Check if git is installed and accessible
+- Try updating manually with `git pull` in the node's directory
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Regular Updates" icon="arrow-rotate-right">
+    Keep your custom nodes updated for bug fixes and new features
+  </Card>
+  
+  <Card title="Review Before Installing" icon="shield-check">
+    Always review what you're installing from the community
+  </Card>
+  
+  <Card title="Backup Workflows" icon="floppy-disk">
+    Save your workflows before major updates
+  </Card>
+  
+  <Card title="Test After Updates" icon="vial">
+    Test your workflows after updating nodes
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Installing Extensions" icon="download" href="/extensions/installing-extensions">
+    Learn how to install and manage extensions
+  </Card>
+  
+  <Card title="Creating Nodes" icon="code" href="/extensions/creating-nodes">
+    Create your own custom nodes
+  </Card>
+</CardGroup>

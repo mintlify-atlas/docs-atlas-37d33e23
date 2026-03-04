@@ -1,0 +1,269 @@
+---
+title: Common Issues and Solutions
+description: Troubleshooting common problems in ComfyUI
+---
+
+This guide covers frequently encountered issues and their solutions when running ComfyUI.
+
+## Installation Issues
+
+<Accordion title="Torch not compiled with CUDA enabled">
+  This error occurs when PyTorch is installed without CUDA support.
+
+  **Solution:**
+  
+  1. Uninstall the current PyTorch installation:
+     ```bash
+     pip uninstall torch
+     ```
+
+  2. Reinstall PyTorch with CUDA support:
+     ```bash
+     pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu130
+     ```
+
+  For AMD GPUs, use the ROCm version instead:
+  ```bash
+  pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm7.1
+  ```
+</Accordion>
+
+<Accordion title="Failed to extract archive with 7-Zip (Windows)">
+  If you have trouble extracting the portable Windows version, the file may be blocked by Windows.
+
+  **Solution:**
+  
+  1. Right-click the downloaded `.7z` file
+  2. Select **Properties**
+  3. Check the **Unblock** checkbox at the bottom
+  4. Click **OK** and try extracting again
+</Accordion>
+
+<Accordion title="Custom nodes not loading or causing errors">
+  Custom nodes can sometimes conflict or fail to load properly.
+
+  **Solution:**
+  
+  Disable all custom nodes to isolate the issue:
+  ```bash
+  python main.py --disable-all-custom-nodes
+  ```
+
+  To enable only specific nodes:
+  ```bash
+  python main.py --disable-all-custom-nodes --whitelist-custom-nodes "node_name_1,node_name_2"
+  ```
+
+  This helps identify which custom node is causing problems.
+</Accordion>
+
+## Memory Issues
+
+<Accordion title="Out of Memory (OOM) errors">
+  OOM errors occur when your GPU runs out of VRAM during generation.
+
+  **Solution:**
+  
+  Use low VRAM mode to reduce memory usage:
+  ```bash
+  python main.py --lowvram
+  ```
+
+  For extremely limited VRAM (< 2GB):
+  ```bash
+  python main.py --novram
+  ```
+
+  For systems without a GPU:
+  ```bash
+  python main.py --cpu
+  ```
+
+  **Note:** CPU mode is significantly slower than GPU mode.
+</Accordion>
+
+<Accordion title="Black images with xformers 0.0.18">
+  A known bug in xformers version 0.0.18 causes black images when generating high-resolution outputs.
+
+  **Solution:**
+  
+  Downgrade or upgrade xformers to a different version:
+  ```bash
+  pip install xformers!=0.0.18
+  ```
+
+  Or disable xformers entirely:
+  ```bash
+  python main.py --disable-xformers
+  ```
+</Accordion>
+
+<Accordion title="Slow performance after CUDA malloc warning">
+  If you see a warning about cudaMallocAsync compatibility with your GPU.
+
+  **Solution:**
+  
+  Disable CUDA malloc:
+  ```bash
+  python main.py --disable-cuda-malloc
+  ```
+
+  This is particularly relevant for older GPUs that don't support async memory allocation.
+</Accordion>
+
+## Runtime Errors
+
+<Accordion title="Models not found or not loading">
+  ComfyUI can't find your checkpoint files.
+
+  **Solution:**
+  
+  1. Ensure models are in the correct directory:
+     - Checkpoints: `models/checkpoints`
+     - VAE: `models/vae`
+     - LoRAs: `models/loras`
+     - Embeddings: `models/embeddings`
+
+  2. Configure extra model paths by copying `extra_model_paths.yaml.example` to `extra_model_paths.yaml` and editing it:
+     ```bash
+     cp extra_model_paths.yaml.example extra_model_paths.yaml
+     ```
+
+  3. Edit `extra_model_paths.yaml` with your model paths
+
+  4. Restart ComfyUI
+</Accordion>
+
+<Accordion title="Preview images not showing">
+  Latent previews may not be enabled or TAESD models are missing.
+
+  **Solution:**
+  
+  1. Enable preview method:
+     ```bash
+     python main.py --preview-method auto
+     ```
+
+  2. For high-quality previews, download TAESD decoder files:
+     - `taesd_decoder.pth`
+     - `taesdxl_decoder.pth`
+     - `taesd3_decoder.pth`
+     - `taef1_decoder.pth`
+
+  3. Place them in `models/vae_approx` directory
+
+  4. Launch with TAESD preview:
+     ```bash
+     python main.py --preview-method taesd
+     ```
+</Accordion>
+
+<Accordion title="Workflow execution hangs or freezes">
+  The execution may be stuck or waiting for resources.
+
+  **Solution:**
+  
+  1. Check if a node has invalid inputs or missing connections
+  2. Cancel the current execution with `Ctrl + Alt + Enter`
+  3. If the issue persists, restart ComfyUI
+  4. Check the console for error messages
+
+  **Note:** Only parts of the graph with all correct inputs will execute. Incomplete workflows will not run.
+</Accordion>
+
+## Platform-Specific Issues
+
+<Accordion title="macOS: Black images or slow performance">
+  macOS versions 14.5 and later have a known bug causing black images.
+
+  **Solution:**
+  
+  Force upcast attention (automatically enabled on macOS 14.5+):
+  ```bash
+  python main.py --force-upcast-attention
+  ```
+
+  This forces computations to use higher precision, avoiding the black image bug.
+</Accordion>
+
+<Accordion title="Windows: Shared VRAM issues">
+  Windows reserves additional VRAM for shared memory management.
+
+  **Solution:**
+  
+  ComfyUI automatically reserves 600MB on Windows (vs 400MB on Linux). If you still experience issues:
+
+  ```bash
+  python main.py --reserve-vram 1.0
+  ```
+
+  This reserves 1GB of VRAM for the system. Adjust the value based on your needs.
+</Accordion>
+
+<Accordion title="AMD GPU: Poor performance or errors">
+  AMD GPUs may need specific environment variables or settings.
+
+  **Solution:**
+  
+  For unsupported AMD cards, override the architecture version:
+
+  **RDNA2 (6700, 6600):**
+  ```bash
+  HSA_OVERRIDE_GFX_VERSION=10.3.0 python main.py
+  ```
+
+  **RDNA3 (7600):**
+  ```bash
+  HSA_OVERRIDE_GFX_VERSION=11.0.0 python main.py
+  ```
+
+  Enable experimental memory efficient attention:
+  ```bash
+  TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1 python main.py --use-pytorch-cross-attention
+  ```
+
+  Enable TunableOp (slow first run, faster subsequent runs):
+  ```bash
+  PYTORCH_TUNABLEOP_ENABLED=1 python main.py
+  ```
+</Accordion>
+
+## Database and Assets
+
+<Accordion title="Database initialization failed">
+  The asset database may fail to initialize if dependencies are missing.
+
+  **Solution:**
+  
+  1. Ensure all requirements are installed:
+     ```bash
+     pip install -r requirements.txt
+     ```
+
+  2. If the error persists, disable automatic asset scanning:
+     ```bash
+     python main.py --disable-assets-autoscan
+     ```
+
+  3. Report persistent database issues as they may indicate a dependency problem
+</Accordion>
+
+## Getting Help
+
+<Accordion title="Where to get support">
+  If you've tried the solutions above and still have issues:
+
+  1. **Discord**: Join the [ComfyUI Discord](https://comfy.org/discord) and try the `#help` or `#feedback` channels
+
+  2. **Matrix**: Join the ComfyUI Matrix space at [#comfyui_space:matrix.org](https://app.element.io/#/room/%23comfyui_space%3Amatrix.org)
+
+  3. **GitHub Issues**: Report bugs at the [ComfyUI GitHub repository](https://github.com/comfyanonymous/ComfyUI/issues)
+
+  When reporting issues, include:
+  - Your operating system
+  - GPU model and VRAM
+  - Python version
+  - PyTorch version
+  - The full error message from the console
+  - Steps to reproduce the issue
+</Accordion>

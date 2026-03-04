@@ -1,0 +1,352 @@
+---
+title: Image Processing Nodes
+description: Load, process, and save pixel-space images
+---
+
+Image nodes work with final pixel-space images for loading, processing, and saving outputs.
+
+## Loading Images
+
+### LoadImage
+
+Loads an image from the input directory.
+
+**Category**: `image`
+
+<ParamField path="image" type="string" required>
+  The image file to load (supports upload)
+</ParamField>
+
+**Returns**:
+- `IMAGE`: The loaded image in RGB format
+- `MASK`: Alpha channel mask (if present)
+
+**Description**: Loads images from the input folder. Supports most image formats including PNG, JPEG, WebP, and animated formats. The alpha channel is extracted as a separate mask output.
+
+**Supported Formats**:
+- PNG (with alpha channel support)
+- JPEG
+- WebP
+- GIF (first frame only)
+- TIFF
+- BMP
+
+### LoadImageMask
+
+Loads an image and extracts a specific channel as a mask.
+
+**Category**: `mask`
+
+<ParamField path="image" type="string" required>
+  The image file to load
+</ParamField>
+
+<ParamField path="channel" type="string" required>
+  Which channel to extract. Options: `alpha`, `red`, `green`, `blue`
+</ParamField>
+
+**Returns**:
+- `MASK`: The extracted channel as a mask
+
+**Description**: Extracts a single channel from an image to use as a mask. The alpha channel is inverted (transparent becomes white in the mask).
+
+## Saving Images
+
+### SaveImage
+
+Saves images to the output directory.
+
+**Category**: `image`
+
+<ParamField path="images" type="IMAGE" required>
+  The images to save
+</ParamField>
+
+<ParamField path="filename_prefix" type="STRING" default="ComfyUI">
+  Prefix for the saved filename. Supports formatting like `%date:yyyy-MM-dd%` or `%node_name.parameter%`
+</ParamField>
+
+**Description**: Saves images as PNG files with embedded metadata including the workflow and prompts (unless metadata is disabled). Images are saved to the output folder with sequential numbering.
+
+**Filename Formatting**:
+- `%date:yyyy-MM-dd%`: Current date
+- `%date:HH-mm-ss%`: Current time
+- `%Empty Latent Image.width%`: Reference node parameters
+- `%batch_num%`: Batch number for multiple images
+
+### PreviewImage
+
+Displays images in the UI without saving to output.
+
+**Category**: `image`
+
+<ParamField path="images" type="IMAGE" required>
+  The images to preview
+</ParamField>
+
+**Description**: Shows images in the ComfyUI interface. Images are saved temporarily and deleted on server restart. Useful for debugging workflows.
+
+## Image Scaling
+
+### ImageScale
+
+Resizes an image to specific dimensions.
+
+**Category**: `image/upscaling`
+
+<ParamField path="image" type="IMAGE" required>
+  The image to scale
+</ParamField>
+
+<ParamField path="upscale_method" type="string" required>
+  Interpolation method. Options: `nearest-exact`, `bilinear`, `area`, `bicubic`, `lanczos`
+</ParamField>
+
+<ParamField path="width" type="int" default="512">
+  Target width. Range: 0 to 16384. Set to 0 to maintain aspect ratio.
+</ParamField>
+
+<ParamField path="height" type="int" default="512">
+  Target height. Range: 0 to 16384. Set to 0 to maintain aspect ratio.
+</ParamField>
+
+<ParamField path="crop" type="string" required>
+  Cropping method. Options: `disabled`, `center`
+</ParamField>
+
+**Returns**:
+- `IMAGE`: Resized image
+
+**Upscale Methods**:
+- `nearest-exact`: Fastest, pixelated look
+- `bilinear`: Fast, smooth but slightly blurry
+- `area`: Best for downscaling
+- `bicubic`: Good quality, balanced
+- `lanczos`: Highest quality, slower, sharp edges
+
+### ImageScaleBy
+
+Resizes an image by a scale factor.
+
+**Category**: `image/upscaling`
+
+<ParamField path="image" type="IMAGE" required>
+  The image to scale
+</ParamField>
+
+<ParamField path="upscale_method" type="string" required>
+  Interpolation method
+</ParamField>
+
+<ParamField path="scale_by" type="float" default="1.0">
+  Scale multiplier. Range: 0.01 to 8.0
+</ParamField>
+
+**Returns**:
+- `IMAGE`: Scaled image
+
+### ImageUpscaleWithModel
+
+Upscales an image using an AI upscale model.
+
+**Category**: `image/upscaling`
+
+<ParamField path="upscale_model" type="UPSCALE_MODEL" required>
+  The upscale model to use (e.g., RealESRGAN, ESRGAN)
+</ParamField>
+
+<ParamField path="image" type="IMAGE" required>
+  The image to upscale
+</ParamField>
+
+**Returns**:
+- `IMAGE`: Upscaled image
+
+**Description**: Uses neural network upscaling models for high-quality super-resolution. Much better quality than simple interpolation, especially for 2x or 4x upscaling.
+
+**Common Models**:
+- RealESRGAN_x4plus: General purpose 4x upscaling
+- RealESRGAN_x2plus: 2x upscaling
+- ESRGAN_4x: Anime/illustration focused
+- Various specialized models for faces, anime, etc.
+
+## Image Processing
+
+### ImageInvert
+
+Inverts the colors of an image.
+
+**Category**: `image`
+
+<ParamField path="image" type="IMAGE" required>
+  The image to invert
+</ParamField>
+
+**Returns**:
+- `IMAGE`: Inverted image
+
+**Description**: Inverts all colors (255 - value for each channel). Black becomes white, colors become their complementary colors.
+
+### ImagePadForOutpaint
+
+Expands an image's canvas for outpainting.
+
+**Category**: `image`
+
+<ParamField path="image" type="IMAGE" required>
+  The image to expand
+</ParamField>
+
+<ParamField path="left" type="int" default="0">
+  Pixels to add on left. Range: 0 to 16384, step 8
+</ParamField>
+
+<ParamField path="top" type="int" default="0">
+  Pixels to add on top. Range: 0 to 16384, step 8
+</ParamField>
+
+<ParamField path="right" type="int" default="0">
+  Pixels to add on right. Range: 0 to 16384, step 8
+</ParamField>
+
+<ParamField path="bottom" type="int" default="0">
+  Pixels to add on bottom. Range: 0 to 16384, step 8
+</ParamField>
+
+<ParamField path="feathering" type="int" default="40">
+  Feathering amount at edges for smooth blending. Range: 0 to 16384
+</ParamField>
+
+**Returns**:
+- `IMAGE`: Padded image with gray fill
+- `MASK`: Mask marking the new areas (white = generate, black = preserve)
+
+**Description**: Extends the canvas around an image for outpainting workflows. The original image is preserved in the center, and new areas are filled with neutral gray. The mask indicates which areas should be generated.
+
+### EmptyImage
+
+Creates a blank colored image.
+
+**Category**: `image`
+
+<ParamField path="width" type="int" default="512">
+  Image width. Range: 1 to 16384
+</ParamField>
+
+<ParamField path="height" type="int" default="512">
+  Image height. Range: 1 to 16384
+</ParamField>
+
+<ParamField path="batch_size" type="int" default="1">
+  Number of images. Range: 1 to 4096
+</ParamField>
+
+<ParamField path="color" type="int" default="0">
+  RGB color value (hex). Range: 0 to 0xFFFFFF
+</ParamField>
+
+**Returns**:
+- `IMAGE`: Blank colored image
+
+**Description**: Creates a solid color image. Useful for backgrounds or testing.
+
+## Batch Operations
+
+### ImageBatch
+
+Combines two images into a batch.
+
+**Category**: `image` (Deprecated)
+
+<ParamField path="image1" type="IMAGE" required>
+  First image
+</ParamField>
+
+<ParamField path="image2" type="IMAGE" required>
+  Second image
+</ParamField>
+
+**Returns**:
+- `IMAGE`: Combined batch
+
+**Description**: Merges two images into a single batch. If dimensions don't match, image2 is resized to match image1. This node is deprecated; prefer using multiple inputs on nodes that support batching.
+
+## Workflow Examples
+
+### Basic Image Generation
+
+```
+CheckpointLoaderSimple → MODEL, CLIP, VAE
+CLIPTextEncode (positive) → CONDITIONING
+CLIPTextEncode (negative) → CONDITIONING  
+EmptyLatentImage → LATENT
+KSampler → LATENT
+VAEDecode → IMAGE
+SaveImage
+```
+
+### Image to Image
+
+```
+LoadImage → IMAGE, MASK
+VAEEncode → LATENT
+KSampler (denoise < 1.0) → LATENT
+VAEDecode → IMAGE
+SaveImage
+```
+
+### Upscaling with Model
+
+```
+[Generate base image]
+VAEDecode → IMAGE
+UpscaleModelLoader → UPSCALE_MODEL
+ImageUpscaleWithModel → IMAGE (high res)
+VAEEncode → LATENT
+KSampler (denoise 0.3-0.5) → LATENT (refined)
+VAEDecode → IMAGE
+SaveImage
+```
+
+### Outpainting
+
+```
+LoadImage → IMAGE
+ImagePadForOutpaint → IMAGE, MASK
+VAEEncode → LATENT
+SetLatentNoiseMask → LATENT (with mask)
+KSampler → LATENT
+VAEDecode → IMAGE
+SaveImage
+```
+
+## Image Formats
+
+ComfyUI internally uses images in the format:
+- Shape: `[batch, height, width, channels]`
+- Data type: `float32`
+- Range: `0.0 to 1.0`
+- Color space: RGB (not BGR)
+
+Images are automatically converted to/from this format when loading and saving.
+
+## Tips
+
+### Memory Usage
+
+- Pixel-space operations use more memory than latent operations
+- For large images, consider working in latent space when possible
+- Use tiled VAE encoding/decoding for very large images
+
+### Quality Settings
+
+- PNG compression level is set to 4 by default (balance of size/speed)
+- Metadata is embedded in saved PNGs (disable with `--disable-metadata` flag)
+- Preview images use lower compression for faster display
+
+### File Organization
+
+- Input images go in `input/` directory
+- Output images save to `output/` directory
+- Preview images save to `temp/` directory
+- Use `filename_prefix` to organize outputs into subdirectories

@@ -1,0 +1,562 @@
+---
+title: Hardware Support
+description: GPU and hardware compatibility guide for ComfyUI
+---
+
+ComfyUI supports a wide range of hardware platforms, from high-end NVIDIA GPUs to CPU-only systems. This guide covers installation and configuration for different hardware types.
+
+## Supported Hardware
+
+ComfyUI works on:
+
+- **NVIDIA GPUs** (CUDA) - Best performance and compatibility
+- **AMD GPUs** (ROCm) - Good performance on supported cards
+- **Intel GPUs** (Arc, Xe) - Experimental support via oneAPI/XPU
+- **Apple Silicon** (M1/M2/M3/M4) - MPS acceleration support
+- **Ascend NPUs** - Huawei Ascend accelerators
+- **Cambricon MLUs** - Cambricon machine learning units
+- **Iluvatar Corex** - Iluvatar AI accelerators
+- **CPU** - Works on any system (slow)
+
+## NVIDIA GPUs
+
+NVIDIA GPUs offer the best performance and compatibility with ComfyUI. Requires CUDA-capable hardware.
+
+### Requirements
+
+- NVIDIA GPU with CUDA compute capability 3.5 or higher
+- Updated NVIDIA drivers
+- Python 3.10+ (3.13 recommended)
+- PyTorch 2.4 or newer
+
+### Installation
+
+#### Install PyTorch with CUDA 13.0 (Recommended)
+
+```bash
+pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu130
+```
+
+#### Install PyTorch with CUDA 12.6 (For Older GPUs)
+
+For NVIDIA 10-series and older GPUs:
+
+```bash
+pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu126
+```
+
+#### Install PyTorch Nightly (Latest Features)
+
+```bash
+pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu130
+```
+
+### Portable Windows Builds
+
+Pre-built portable packages are available for Windows:
+
+- [NVIDIA GPUs (CUDA 13.0)](https://github.com/comfyanonymous/ComfyUI/releases/latest/download/ComfyUI_windows_portable_nvidia.7z) - Python 3.13, CUDA 13.0
+- [NVIDIA GPUs (CUDA 12.6)](https://github.com/comfyanonymous/ComfyUI/releases/latest/download/ComfyUI_windows_portable_nvidia_cu126.7z) - Python 3.12, supports 10-series GPUs
+
+<Note>
+Update your NVIDIA drivers if ComfyUI doesn't start. The portable builds come with Python and PyTorch pre-configured.
+</Note>
+
+### Recommended Settings by VRAM
+
+<Tabs>
+  <Tab title="24GB+ VRAM">
+    Best performance with all models loaded in VRAM:
+    
+    ```bash
+    python main.py --highvram --preview-method taesd
+    ```
+    
+    Or for maximum performance:
+    
+    ```bash
+    python main.py --gpu-only --preview-method taesd
+    ```
+  </Tab>
+  
+  <Tab title="12GB VRAM">
+    Default settings work well:
+    
+    ```bash
+    python main.py --preview-method auto
+    ```
+  </Tab>
+  
+  <Tab title="8GB VRAM">
+    Use normal VRAM mode:
+    
+    ```bash
+    python main.py --normalvram --preview-method auto
+    ```
+  </Tab>
+  
+  <Tab title="4-6GB VRAM">
+    Enable low VRAM mode:
+    
+    ```bash
+    python main.py --lowvram --fp16-vae --preview-method auto
+    ```
+  </Tab>
+  
+  <Tab title="<4GB VRAM">
+    Use extreme memory saving:
+    
+    ```bash
+    python main.py --novram --fp16-vae --fp8_e4m3fn-unet --preview-method latent2rgb
+    ```
+  </Tab>
+</Tabs>
+
+### Troubleshooting
+
+#### "Torch not compiled with CUDA enabled"
+
+Uninstall and reinstall PyTorch:
+
+```bash
+pip uninstall torch
+pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu130
+```
+
+#### CUDA malloc errors
+
+Disable cudaMallocAsync:
+
+```bash
+python main.py --disable-cuda-malloc
+```
+
+#### Out of memory errors
+
+Reduce VRAM usage:
+
+```bash
+python main.py --lowvram --fp16-vae
+```
+
+## AMD GPUs
+
+AMD GPUs are supported through ROCm on Linux and experimental Windows builds for RDNA 3/4.
+
+### Linux (Recommended)
+
+Supported on most modern AMD GPUs with ROCm.
+
+#### Install PyTorch with ROCm 7.1 (Stable)
+
+```bash
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm7.1
+```
+
+#### Install PyTorch with ROCm 7.2 (Nightly)
+
+May have performance improvements:
+
+```bash
+pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/rocm7.2
+```
+
+#### Running ComfyUI
+
+```bash
+python main.py --use-pytorch-cross-attention --preview-method auto
+```
+
+### Windows (Experimental)
+
+Experimental support for RDNA 3, 3.5, and 4 GPUs only.
+
+<Warning>
+Windows AMD support is experimental and has less hardware compatibility than Linux.
+</Warning>
+
+#### RDNA 3 (RX 7000 Series)
+
+```bash
+pip install --pre torch torchvision torchaudio --index-url https://rocm.nightlies.amd.com/v2/gfx110X-all/
+```
+
+#### RDNA 3.5 (Strix Halo / Ryzen AI Max+ 365)
+
+```bash
+pip install --pre torch torchvision torchaudio --index-url https://rocm.nightlies.amd.com/v2/gfx1151/
+```
+
+#### RDNA 4 (RX 9000 Series)
+
+```bash
+pip install --pre torch torchvision torchaudio --index-url https://rocm.nightlies.amd.com/v2/gfx120X-all/
+```
+
+#### Portable Windows Build
+
+[Experimental AMD Portable Build](https://github.com/comfyanonymous/ComfyUI/releases/latest/download/ComfyUI_windows_portable_amd.7z)
+
+### Unsupported AMD Cards (Linux)
+
+For older RDNA2 or unsupported cards, use the `HSA_OVERRIDE_GFX_VERSION` environment variable:
+
+```bash
+# For RX 6700, 6600, and RDNA2 cards
+HSA_OVERRIDE_GFX_VERSION=10.3.0 python main.py
+
+# For RX 7600 and RDNA3 cards
+HSA_OVERRIDE_GFX_VERSION=11.0.0 python main.py
+```
+
+### AMD ROCm Optimizations
+
+Enable experimental memory-efficient attention:
+
+```bash
+TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1 python main.py --use-pytorch-cross-attention
+```
+
+Enable TunableOp for potential speedup (slow first run):
+
+```bash
+PYTORCH_TUNABLEOP_ENABLED=1 python main.py --use-pytorch-cross-attention
+```
+
+<Note>
+These optimizations are already enabled by default on RDNA3 GPUs.
+</Note>
+
+## Intel GPUs
+
+Intel Arc and Xe GPUs are supported via Intel Extension for PyTorch.
+
+### Requirements
+
+- Intel Arc GPU (A-series) or Intel Xe integrated graphics
+- Windows or Linux
+- Python 3.10+
+
+### Installation
+
+#### Install PyTorch XPU (Stable)
+
+```bash
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
+```
+
+#### Install PyTorch XPU (Nightly)
+
+May have performance improvements:
+
+```bash
+pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/xpu
+```
+
+<Info>
+See the [PyTorch XPU documentation](https://pytorch.org/docs/main/notes/get_start_xpu.html) for more details.
+</Info>
+
+### Running ComfyUI
+
+```bash
+python main.py --use-pytorch-cross-attention --preview-method auto
+```
+
+### Device Selection
+
+Select specific Intel device:
+
+```bash
+python main.py --oneapi-device-selector "level_zero:0"
+```
+
+### Disable IPEX Optimizations
+
+If you encounter issues:
+
+```bash
+python main.py --disable-ipex-optimize
+```
+
+## Apple Silicon (M1/M2/M3/M4)
+
+ComfyUI supports Apple Silicon Macs with MPS (Metal Performance Shaders) acceleration.
+
+### Requirements
+
+- Mac with Apple Silicon (M1, M2, M3, or M4)
+- macOS 12.0 or later
+- Python 3.10+ (3.13 recommended)
+
+### Installation
+
+1. Install PyTorch with MPS support:
+
+```bash
+pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cpu
+```
+
+<Info>
+See [Apple's PyTorch guide](https://developer.apple.com/metal/pytorch/) for installation instructions.
+</Info>
+
+2. Install ComfyUI dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+3. Add models to the appropriate folders as described in the [installation guide](/installation).
+
+### Running ComfyUI
+
+```bash
+python main.py --preview-method auto
+```
+
+ComfyUI automatically detects and uses MPS acceleration on Apple Silicon.
+
+### Performance Tips
+
+- **Unified Memory**: Apple Silicon benefits from unified memory architecture
+- **Model Size**: Can handle larger models than GPU VRAM alone would suggest
+- **Performance**: Expect 2-4x slower than equivalent NVIDIA GPU, but very capable
+
+### Recommended Models
+
+Apple Silicon works well with:
+- SD 1.5 models
+- SDXL (on M2 Pro/Max/Ultra or M3/M4)
+- Flux (on M3 Max/Ultra or M4 Max/Ultra with 64GB+ RAM)
+
+## Ascend NPUs
+
+Huawei Ascend NPUs are supported via Ascend Extension for PyTorch.
+
+### Requirements
+
+- Ascend NPU hardware
+- Supported Linux kernel (see Ascend documentation)
+- Ascend Basekit (driver, firmware, CANN)
+
+### Installation
+
+1. Install the recommended Linux kernel version from the [torch-npu installation page](https://ascend.github.io/docs/sources/ascend/quick_install.html)
+
+2. Install Ascend Basekit (driver, firmware, and CANN) following platform-specific instructions
+
+3. Install torch-npu packages following the [installation guide](https://ascend.github.io/docs/sources/pytorch/install.html#pytorch)
+
+4. Install ComfyUI dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+### Running ComfyUI
+
+```bash
+python main.py
+```
+
+ComfyUI automatically detects and uses Ascend NPUs.
+
+## Cambricon MLUs
+
+Cambricon Machine Learning Units are supported via Cambricon Extension for PyTorch.
+
+### Requirements
+
+- Cambricon MLU hardware
+- Cambricon CNToolkit
+- PyTorch with torch_mlu
+
+### Installation
+
+1. Install Cambricon CNToolkit following the [installation guide](https://www.cambricon.com/docs/sdk_1.15.0/cntoolkit_3.7.2/cntoolkit_install_3.7.2/index.html)
+
+2. Install PyTorch with torch_mlu support following the [user guide](https://www.cambricon.com/docs/sdk_1.15.0/cambricon_pytorch_1.17.0/user_guide_1.9/index.html)
+
+3. Install ComfyUI dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+### Running ComfyUI
+
+```bash
+python main.py
+```
+
+## Iluvatar Corex
+
+Iluvatar AI accelerators are supported via Iluvatar Extension for PyTorch.
+
+### Requirements
+
+- Iluvatar Corex hardware
+- Iluvatar Corex Toolkit
+
+### Installation
+
+1. Install Iluvatar Corex Toolkit following the [installation guide](https://support.iluvatar.com/#/DocumentCentre?id=1&nameCenter=2&productId=520117912052801536)
+
+2. Install ComfyUI dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+### Running ComfyUI
+
+```bash
+python main.py
+```
+
+## CPU Only
+
+ComfyUI can run on CPU alone, though it will be significantly slower than GPU acceleration.
+
+### Requirements
+
+- Any x86_64 or ARM CPU
+- 16GB+ RAM recommended (32GB+ for larger models)
+- Python 3.10+
+
+### Installation
+
+Install PyTorch CPU version:
+
+```bash
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+```
+
+### Running ComfyUI
+
+```bash
+python main.py --cpu --preview-method latent2rgb
+```
+
+### Performance Expectations
+
+- **SD 1.5**: 2-5 minutes per image on modern CPUs
+- **SDXL**: 10-30 minutes per image
+- **Flux**: Not recommended (extremely slow)
+
+### Optimization Tips
+
+```bash
+python main.py --cpu --lowvram --fp16-unet --preview-method latent2rgb
+```
+
+## Hardware Selection Guide
+
+### Which GPU Should I Buy?
+
+See the [ComfyUI GPU recommendations wiki](https://github.com/comfyanonymous/ComfyUI/wiki/Which-GPU-should-I-buy-for-ComfyUI) for detailed buying advice.
+
+### Quick Recommendations
+
+<CardGroup cols={2}>
+  <Card title="Budget" icon="wallet">
+    **NVIDIA RTX 3060 12GB** or **RTX 4060 Ti 16GB**
+    
+    Good for SD 1.5, SDXL, and smaller models.
+  </Card>
+  
+  <Card title="Enthusiast" icon="star">
+    **NVIDIA RTX 4070 Ti Super 16GB** or **RTX 4080 16GB**
+    
+    Great for SDXL, Flux schnell, and most workflows.
+  </Card>
+  
+  <Card title="Professional" icon="briefcase">
+    **NVIDIA RTX 4090 24GB** or **RTX 6000 Ada 48GB**
+    
+    Best for all models including Flux dev, video generation, and heavy workflows.
+  </Card>
+  
+  <Card title="Server/Multi-GPU" icon="server">
+    **NVIDIA A6000 48GB** or **H100 80GB**
+    
+    Enterprise solutions for maximum performance and multi-user setups.
+  </Card>
+</CardGroup>
+
+### VRAM Requirements by Model
+
+| Model Type | Minimum VRAM | Recommended VRAM |
+|------------|--------------|------------------|
+| SD 1.5 | 4GB | 8GB |
+| SDXL | 6GB | 12GB |
+| Flux Schnell | 12GB | 16GB |
+| Flux Dev | 16GB | 24GB |
+| Video (SVD) | 12GB | 24GB |
+| Mochi | 20GB | 32GB |
+| Hunyuan Video | 32GB | 60GB |
+
+<Note>
+Lower VRAM amounts can work with `--lowvram`, `--novram`, and FP8 quantization, but will be slower.
+</Note>
+
+## Multi-GPU Setup
+
+ComfyUI supports multi-GPU systems.
+
+### Select Primary GPU
+
+```bash
+# Use GPU 0 as primary, hide other GPUs
+python main.py --cuda-device 0
+
+# Use GPU 1 as primary, keep others visible
+python main.py --default-device 1
+```
+
+### Environment Variables
+
+Alternatively, set CUDA device visibility:
+
+```bash
+export CUDA_VISIBLE_DEVICES=0,1
+python main.py
+```
+
+## Benchmarking Your Hardware
+
+To test your hardware performance:
+
+1. Load a standard workflow (e.g., SDXL text-to-image)
+2. Run with different settings and note generation times:
+
+```bash
+# Test 1: Default
+python main.py
+
+# Test 2: High VRAM
+python main.py --highvram
+
+# Test 3: Optimizations
+python main.py --use-pytorch-cross-attention
+
+# Test 4: Experimental
+python main.py --fast
+```
+
+3. Compare execution times in the console output
+
+## Getting Help
+
+If you encounter hardware-specific issues:
+
+- Check the [ComfyUI GitHub Issues](https://github.com/comfyanonymous/ComfyUI/issues)
+- Ask in the [ComfyUI Discord](https://comfy.org/discord) #help channel
+- Join the [ComfyUI Matrix](https://app.element.io/#/room/%23comfyui_space%3Amatrix.org) chat
+
+Provide details about:
+- Your hardware (GPU model, VRAM, CPU, RAM)
+- Operating system and version
+- PyTorch version (`python -c "import torch; print(torch.__version__)"`)
+- Full error messages and console output

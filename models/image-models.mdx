@@ -1,0 +1,496 @@
+---
+title: Image Models
+description: Comprehensive guide to image generation models supported in ComfyUI
+---
+
+ComfyUI supports a wide range of image generation models, from classic Stable Diffusion to cutting-edge architectures like Flux and SD3.
+
+## Stable Diffusion 1.x / 2.x
+
+<Info>
+  SD 1.x and 2.x are the foundational models for image generation, widely compatible and efficient.
+</Info>
+
+### SD 1.5 (SD15)
+
+**Architecture:**
+- Context dimension: 768
+- Model channels: 320
+- Latent format: SD15 (4 channels, 8x spatial downscaling)
+- Memory usage factor: 1.0
+
+**Features:**
+- Supports regular generation and inpainting
+- Compatible with LoRAs, hypernetworks, and embeddings
+- Works with [unCLIP models](https://comfyanonymous.github.io/ComfyUI_examples/unclip/)
+- InstuctPix2Pix variant available for image editing
+
+**Model Files Location:**
+```
+models/checkpoints/
+```
+
+### SD 2.0 / 2.1 (SD20)
+
+**Architecture:**
+- Context dimension: 1024
+- Uses linear transformers
+- Supports V-prediction and EPS prediction
+- Higher precision (float32) attention for better quality
+
+**Variants:**
+- **SD21UnclipL**: Uses CLIP-L vision encoder with 1536 ADM channels
+- **SD21UnclipH**: Uses CLIP-H vision encoder with 2048 ADM channels
+
+**Special Models:**
+- **SD_X4Upscaler**: 4x upscaling model with 7 input channels
+  - Location: `models/upscale_models/`
+  - Latent format: SD_X4 (downscales by 1x)
+
+---
+
+## SDXL (Stable Diffusion XL)
+
+<Tip>
+  SDXL offers significantly improved image quality and detail compared to SD 1.x/2.x models.
+</Tip>
+
+### SDXL Base
+
+**Architecture:**
+- Model channels: 320
+- Transformer depth: [0, 0, 2, 2, 10, 10]
+- Context dimension: 2048
+- ADM channels: 2816
+- Latent format: SDXL (4 channels, 8x spatial downscaling)
+- Memory usage factor: 0.8
+
+**Text Encoders:**
+- CLIP-L (OpenCLIP ViT-L)
+- CLIP-G (OpenCLIP ViT-bigG)
+
+**Prediction Types:**
+- EPS (standard)
+- V-prediction (with `v_pred` key)
+- EDM (Playground v2.5 variant)
+- V-prediction EDM (with configurable sigma)
+
+**Features:**
+- ZSNR support for anime checkpoints
+- Inpainting model support
+- InstuctPix2Pix variant available
+
+### SDXL Refiner
+
+**Purpose:** Adds fine details to SDXL base generations
+
+**Architecture:**
+- Model channels: 384
+- Transformer depth: [0, 0, 4, 4, 4, 4, 0, 0]
+- Context dimension: 1280
+- Uses only CLIP-G encoder
+
+### SDXL Optimized Variants
+
+**SSD-1B** (Segmind Small)
+- Transformer depth: [0, 0, 2, 2, 4, 4]
+- Faster inference, smaller model size
+
+**Segmind Vega**
+- Transformer depth: [0, 0, 1, 1, 2, 2]
+- Ultra-fast inference
+
+**KOALA Models**
+- **KOALA-700M**: Transformer depth [0, 2, 5]
+- **KOALA-1B**: Transformer depth [0, 2, 6]
+
+---
+
+## Stable Diffusion 3 (SD3)
+
+<Warning>
+  SD3 requires significant VRAM. Use BF16 precision or model offloading for 8GB GPUs.
+</Warning>
+
+**Architecture:**
+- In channels: 16
+- DiT-based (Diffusion Transformer)
+- Latent format: SD3 (16 channels, 8x spatial downscaling)
+- Memory usage factor: 1.6
+- Default shift: 3.0
+
+**Text Encoders (Triple Stack):**
+- CLIP-L (optional)
+- CLIP-G (optional)
+- T5-XXL (optional)
+
+**Supported Models:**
+- SD3 Medium
+- SD3.5 Large
+- SD3.5 Medium
+
+**Loading Example:**
+```python
+# Use TripleCLIPLoader for SD3 models
+clip_path1 = "clip_l.safetensors"  # CLIP-L
+clip_path2 = "clip_g.safetensors"  # CLIP-G  
+clip_path3 = "t5xxl.safetensors"   # T5-XXL
+```
+
+**Workflows:**
+- [SD3 Examples](https://comfyanonymous.github.io/ComfyUI_examples/sd3/)
+
+---
+
+## Flux
+
+<Tip>
+  Flux represents the latest advancement in image generation, offering exceptional quality and prompt adherence.
+</Tip>
+
+### Flux Dev
+
+**Architecture:**
+- Image model: flux
+- Guidance embed: True
+- Latent format: Flux (16 channels, 8x spatial downscaling)
+- Memory usage factor: 3.1
+- Supported dtypes: BF16, FP16, FP32
+
+**Text Encoders:**
+- CLIP-L
+- T5-XXL
+
+**Features:**
+- Guidance scale control (default 3.5)
+- Can disable guidance completely for specific use cases
+
+### Flux Schnell
+
+**Optimizations:**
+- No guidance embed (faster inference)
+- Flow matching model type
+- Shift: 1.0, multiplier: 1.0
+- Optimized for 4-step generation
+
+### Flux Inpaint
+
+**Specifics:**
+- In channels: 96 (to accommodate mask and reference image)
+- Same architecture as Flux Dev otherwise
+- Supported dtypes: BF16, FP32 (FP16 excluded)
+
+### Flux 2
+
+**Architecture:**
+- Updated model: flux2
+- Latent format: Flux2 (16 channels)
+- Shift: 2.02
+- Scales memory usage by model size
+
+**Text Encoder Variants:**
+- **Qwen3-4B**: Small, efficient
+- **Qwen3-8B**: Balanced
+- **Mistral3-24B**: Highest quality (can be pruned)
+
+**Special Features:**
+- Flux Kontext: Image editing model with multi-reference support
+  - Use `FluxKontextImageScale` to optimize input resolution
+  - Preferred resolutions: 672x1568 to 1568x672
+
+**Workflows:**
+- [Flux Examples](https://comfyanonymous.github.io/ComfyUI_examples/flux/)
+- [Flux 2 Examples](https://comfyanonymous.github.io/ComfyUI_examples/flux2/)
+
+---
+
+## Stable Cascade
+
+**Architecture:** Two-stage model with innovative approach
+
+### Stage C (Prior)
+
+**Purpose:** Generates low-resolution prior
+
+**Architecture:**
+- Stable cascade stage: 'c'
+- Latent format: SC_Prior
+- Shift: 2.0
+- Supported dtypes: BF16, FP32
+
+**Components:**
+- Text encoder (CLIP)
+- CLIP vision encoder
+- VAE
+
+### Stage B (Decoder)
+
+**Purpose:** Upscales prior to full resolution
+
+**Architecture:**
+- Stable cascade stage: 'b'
+- Latent format: SC_B
+- Shift: 1.0
+- Supported dtypes: FP16, BF16, FP32
+
+**Workflow:**
+1. Stage C generates compressed latent
+2. Stage B decodes to full image
+
+**Examples:**
+- [Stable Cascade Workflows](https://comfyanonymous.github.io/ComfyUI_examples/stable_cascade/)
+
+---
+
+## Specialized Image Models
+
+### PixArt Alpha / Sigma
+
+**PixArt Alpha:**
+- Image model: pixart_alpha
+- Latent format: SD15
+- Memory usage factor: 0.5
+- Uses T5-XXL encoder
+- Sampling: sqrt_linear beta schedule
+
+**PixArt Sigma:**
+- Image model: pixart_sigma  
+- Latent format: SDXL
+- Improved quality over Alpha
+
+### AuraFlow
+
+**Architecture:**
+- Conditional sequence dimension: 2048
+- Latent format: SDXL
+- Shift: 1.73, multiplier: 1.0
+- Uses custom AuraT5 encoder
+
+**Examples:**
+- [AuraFlow Workflows](https://comfyanonymous.github.io/ComfyUI_examples/aura_flow/)
+
+### HunyuanDiT / HunyuanDiT1
+
+**HunyuanDiT:**
+- Image model: hydit
+- Latent format: SDXL
+- Memory usage factor: 1.3
+- Text encoders: CLIP + mT5 (multilingual)
+- Linear start: 0.00085, end: 0.018
+
+**HunyuanDiT1:**
+- Updated architecture
+- Linear end: 0.03 (extended range)
+
+**Features:**
+- Excellent Chinese language support
+- Multilingual capabilities
+
+**Examples:**
+- [HunyuanDiT Workflows](https://comfyanonymous.github.io/ComfyUI_examples/hunyuan_dit/)
+
+### Hunyuan Image 2.1
+
+**Architecture:**
+- Based on HunyuanVideo architecture
+- Image model: hunyuan_video (adapted)
+- Latent format: HunyuanImage21
+- Memory usage factor: 8.7
+- Shift: 5.0
+- Supported dtypes: BF16, FP32
+
+**Text Encoders:**
+- Llama-based architecture
+
+**Examples:**
+- [Hunyuan Image Workflows](https://comfyanonymous.github.io/ComfyUI_examples/hunyuan_image/)
+
+### Lumina Image 2.0
+
+**Architecture:**
+- Image model: lumina2
+- Latent format: Flux (16 channels)
+- Memory usage factor: 1.4
+- Shift: 6.0, multiplier: 1.0
+- Supported dtypes: BF16, FP32
+
+**Text Encoder:**
+- Gemma2-2B
+
+**Examples:**
+- [Lumina 2.0 Workflows](https://comfyanonymous.github.io/ComfyUI_examples/lumina2/)
+
+### Z Image
+
+**Standard Model:**
+- Dimension: 3840
+- Memory usage factor: 2.8
+- Shift: 3.0
+- Supported dtypes: BF16, FP32 (FP16 with extended support)
+- Text encoder: Qwen3-4B
+
+**Pixel Space Variant (ZImagePixelSpace):**
+- No VAE required - operates on raw RGB patches
+- Memory usage factor: 0.03 (extremely efficient)
+- Latent format: ZImagePixelSpace (no spatial compression)
+
+**Examples:**
+- [Z Image Workflows](https://comfyanonymous.github.io/ComfyUI_examples/z_image/)
+
+### Qwen Image
+
+**Architecture:**
+- Image model: qwen_image
+- Latent format: Wan21
+- Memory usage factor: 1.8
+- Shift: 1.15, multiplier: 1.0
+- Supported dtypes: BF16, FP32
+
+**Text Encoder:**
+- Qwen2.5-7B
+
+**Features:**
+- Standard generation model
+- Edit model variant available
+
+**Examples:**
+- [Qwen Image Workflows](https://comfyanonymous.github.io/ComfyUI_examples/qwen_image/)
+
+### HiDream / HiDream E1.1
+
+**HiDream:**
+- Image model: hidream
+- Latent format: Flux
+- Shift: 3.0
+- Supported dtypes: BF16, FP32
+
+**HiDream E1.1:**
+- Image editing variant
+
+**Examples:**
+- [HiDream Workflows](https://comfyanonymous.github.io/ComfyUI_examples/hidream/)
+
+---
+
+## Image Editing Models
+
+### Omnigen 2
+
+**Architecture:**
+- Image model: omnigen2
+- Latent format: Flux
+- Memory usage factor: 1.95
+- Shift: 2.6, multiplier: 1.0
+- Supported dtypes: FP16 (with extended support), BF16, FP32
+
+**Text Encoder:**
+- Qwen2.5-3B
+
+**Features:**
+- Multi-modal editing
+- Instruction-based editing
+
+**Examples:**
+- [Omnigen 2 Workflows](https://comfyanonymous.github.io/ComfyUI_examples/omnigen/)
+
+---
+
+## 3D View Synthesis
+
+### Stable Zero123
+
+**Architecture:**
+- Context dimension: 768
+- In channels: 8 (includes conditioning)
+- Uses CLIP vision encoder
+- Latent format: SD15
+
+**Purpose:**
+- Novel view synthesis from single image
+- 3D-consistent image generation
+
+### SV3D (Stable Video Diffusion 3D)
+
+**SV3D-u (Unguided):**
+- ADM channels: 256
+- Generates orbital views
+
+**SV3D-p (Posed):**
+- ADM channels: 1280
+- Accepts camera pose conditioning
+
+---
+
+## Model Files
+
+### Default Locations
+
+```
+ComfyUI/
+├── models/
+│   ├── checkpoints/          # Main model files (.safetensors, .ckpt)
+│   ├── vae/                  # VAE models
+│   ├── text_encoders/        # CLIP, T5, etc.
+│   ├── loras/                # LoRA files
+│   ├── embeddings/           # Textual inversions
+│   ├── hypernetworks/        # Hypernetwork files
+│   └── controlnet/           # ControlNet models
+```
+
+### Configuration
+
+Customize model paths using `extra_model_paths.yaml`:
+
+```yaml
+base_path: /path/to/models/
+
+checkpoints: base_path/Stable-diffusion
+vae: base_path/VAE
+loras: base_path/Lora
+```
+
+---
+
+## Performance Tips
+
+<Tip>
+  Use these optimizations for better performance:
+</Tip>
+
+### Memory Management
+
+1. **Enable model offloading**: Automatically moves models between GPU/CPU
+   ```bash
+   python main.py --lowvram
+   ```
+
+2. **Use appropriate precision**:
+   - FP32: Highest quality, most VRAM
+   - FP16: Good balance (not all models support)
+   - BF16: Best for modern GPUs (Ampere+)
+
+3. **Tiled VAE**: For high-resolution images
+   - Use `VAEEncodeTiled` and `VAEDecodeTiled` nodes
+
+### Speed Optimizations
+
+1. **Torch compile**: Faster inference (experimental)
+   ```bash
+   python main.py --use-pytorch-cross-attention
+   ```
+
+2. **Attention optimization**: 
+   - Default: Auto-selects best method
+   - Override with `--attention-pytorch` or `--attention-split`
+
+3. **Preview methods**:
+   - `--preview-method auto`: Enables latent previews
+   - Use TAESD for higher quality previews
+
+---
+
+## Resources
+
+- [Official Examples](https://comfyanonymous.github.io/ComfyUI_examples/)
+- [Model Downloads](https://huggingface.co/)
+- [ComfyUI Wiki](https://github.com/comfyanonymous/ComfyUI/wiki)

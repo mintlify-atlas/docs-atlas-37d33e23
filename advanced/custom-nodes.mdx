@@ -1,0 +1,555 @@
+---
+title: Custom Node Development
+description: Learn how to create custom nodes for ComfyUI to extend functionality with new operations and models
+---
+
+## Overview
+
+Custom nodes in ComfyUI allow you to extend the platform with new functionality, from simple image processing operations to complex model integrations. This guide covers the complete workflow for creating, registering, and distributing custom nodes.
+
+## Basic Node Structure
+
+Custom nodes are Python classes that inherit from `io.ComfyNode` and implement specific class methods:
+
+```python
+from typing_extensions import override
+from comfy_api.latest import ComfyExtension, io
+
+class Example(io.ComfyNode):
+    """
+    An example node that demonstrates the basic structure
+    """
+    
+    @classmethod
+    def define_schema(cls) -> io.Schema:
+        """Define node metadata, inputs, and outputs"""
+        pass
+    
+    @classmethod
+    def execute(cls, **kwargs) -> io.NodeOutput:
+        """Execute the node's main logic"""
+        pass
+```
+
+## Defining Node Schema
+
+The `define_schema()` method specifies the node's identity and interface:
+
+```python
+@classmethod
+def define_schema(cls) -> io.Schema:
+    return io.Schema(
+        node_id="Example",
+        display_name="Example Node",
+        category="Example",
+        inputs=[
+            io.Image.Input("image"),
+            io.Int.Input(
+                "int_field",
+                min=0,
+                max=4096,
+                step=64,
+                display_mode=io.NumberDisplay.number,
+                lazy=True,
+            ),
+            io.Float.Input(
+                "float_field",
+                default=1.0,
+                min=0.0,
+                max=10.0,
+                step=0.01,
+                round=0.001,
+                display_mode=io.NumberDisplay.number,
+                lazy=True,
+            ),
+            io.Combo.Input(
+                "print_to_screen", 
+                options=["enable", "disable"]
+            ),
+            io.String.Input(
+                "string_field",
+                multiline=False,
+                default="Hello world!",
+                lazy=True,
+            )
+        ],
+        outputs=[
+            io.Image.Output(),
+        ],
+    )
+```
+
+<Note>
+  The `node_id` must be unique across all installed custom nodes. Use descriptive names to avoid conflicts.
+</Note>
+
+## Input Types
+
+ComfyUI supports various input types through the `io` module:
+
+<Tabs>
+  <Tab title="Basic Types">
+    <CodeGroup>
+    ```python Integer
+    io.Int.Input(
+        "param_name",
+        default=100,
+        min=0,
+        max=4096,
+        step=1,
+        display_mode=io.NumberDisplay.slider
+    )
+    ```
+    
+    ```python Float
+    io.Float.Input(
+        "param_name",
+        default=1.0,
+        min=0.0,
+        max=10.0,
+        step=0.01,
+        round=0.001,  # Precision for rounding
+        display_mode=io.NumberDisplay.number
+    )
+    ```
+    
+    ```python String
+    io.String.Input(
+        "param_name",
+        default="",
+        multiline=True  # Text area vs single line
+    )
+    ```
+    </CodeGroup>
+  </Tab>
+  
+  <Tab title="Model Types">
+    <CodeGroup>
+    ```python Model
+    io.Model.Input("model")
+    ```
+    
+    ```python VAE
+    io.Vae.Input("vae")
+    ```
+    
+    ```python CLIP
+    io.Clip.Input("clip")
+    ```
+    
+    ```python Conditioning
+    io.Conditioning.Input("conditioning")
+    ```
+    </CodeGroup>
+  </Tab>
+  
+  <Tab title="Data Types">
+    <CodeGroup>
+    ```python Image
+    io.Image.Input("image")
+    ```
+    
+    ```python Latent
+    io.Latent.Input("latent")
+    ```
+    
+    ```python Combo
+    io.Combo.Input(
+        "mode",
+        options=["option1", "option2", "option3"]
+    )
+    ```
+    </CodeGroup>
+  </Tab>
+</Tabs>
+
+## Output Types
+
+Outputs are defined similarly using the `.Output()` variant:
+
+```python
+outputs=[
+    io.Image.Output(),
+    io.Model.Output(),
+    io.String.Output(),
+]
+```
+
+<Info>
+  Multiple outputs are supported. Return values in the same order as defined in the schema.
+</Info>
+
+## Execute Method
+
+The `execute()` method contains your node's main logic:
+
+```python
+@classmethod
+def execute(cls, image, string_field, int_field, float_field, print_to_screen) -> io.NodeOutput:
+    if print_to_screen == "enable":
+        print(f"""Your input contains:
+            string_field: {string_field}
+            int_field: {int_field}
+            float_field: {float_field}
+        """)
+    
+    # Process the image (example: invert)
+    image = 1.0 - image
+    
+    return io.NodeOutput(image)
+```
+
+<Warning>
+  Parameter names in `execute()` must exactly match the input names defined in `define_schema()`.
+</Warning>
+
+## Lazy Evaluation
+
+Lazy inputs are only evaluated when needed, improving performance for conditional workflows.
+
+### Marking Inputs as Lazy
+
+```python
+io.Int.Input(
+    "expensive_param",
+    lazy=True,  # Won't be evaluated unless needed
+    default=0
+)
+```
+
+### Controlling Lazy Evaluation
+
+Implement `check_lazy_status()` to specify which lazy inputs should be evaluated:
+
+```python
+@classmethod
+def check_lazy_status(cls, image, string_field, int_field, float_field, print_to_screen):
+    """
+    Return a list of input names that need to be evaluated.
+    
+    Evaluated inputs will be passed as arguments.
+    Unevaluated inputs will have the value None.
+    """
+    if print_to_screen == "enable":
+        return ["int_field", "float_field", "string_field"]
+    else:
+        return []
+```
+
+<Steps>
+  <Step title="Initial Call">
+    Called with non-lazy inputs evaluated, lazy inputs as `None`
+  </Step>
+  
+  <Step title="Request Evaluation">
+    Return list of input names that need evaluation
+  </Step>
+  
+  <Step title="Subsequent Calls">
+    Called again once requested inputs are available
+  </Step>
+  
+  <Step title="Complete">
+    When empty list returned, proceed to `execute()`
+  </Step>
+</Steps>
+
+## Fingerprinting (Cache Control)
+
+Control when your node should re-execute using fingerprinting:
+
+```python
+@classmethod
+def fingerprint_inputs(cls, image, string_field, int_field, float_field, print_to_screen):
+    """
+    Return a value (string/number) that changes when the node should re-execute.
+    
+    Useful for nodes that depend on external state (files, timestamps, etc.)
+    """
+    import hashlib
+    import os
+    
+    # Example: Re-execute if file changes
+    if os.path.exists(string_field):
+        file_hash = hashlib.md5(open(string_field, 'rb').read()).hexdigest()
+        return file_hash
+    
+    return ""
+```
+
+<Tip>
+  The core `LoadImage` node uses fingerprinting to re-execute when the source image file changes on disk.
+</Tip>
+
+## Creating an Extension
+
+Wrap your nodes in a `ComfyExtension` to register them:
+
+```python
+class ExampleExtension(ComfyExtension):
+    @override
+    async def get_node_list(self) -> list[type[io.ComfyNode]]:
+        return [
+            Example,
+            AnotherNode,
+            YetAnotherNode,
+        ]
+
+async def comfy_entrypoint() -> ExampleExtension:
+    """ComfyUI calls this to load your extension and its nodes."""
+    return ExampleExtension()
+```
+
+## Adding Custom API Routes
+
+Extend the ComfyUI server with custom endpoints:
+
+```python
+from aiohttp import web
+from server import PromptServer
+
+@PromptServer.instance.routes.get("/hello")
+async def get_hello(request):
+    return web.json_response("hello")
+
+@PromptServer.instance.routes.post("/custom/process")
+async def post_process(request):
+    data = await request.json()
+    # Process data
+    return web.json_response({"status": "success"})
+```
+
+<Info>
+  Custom routes are useful for integrating external tools, providing status endpoints, or enabling webhooks.
+</Info>
+
+## Frontend Extensions
+
+Add custom JavaScript to enhance the UI:
+
+```python
+# Set the web directory in your extension file
+WEB_DIRECTORY = "./somejs"
+```
+
+Any `.js` file in that directory will be loaded by the frontend.
+
+## Example: Image Processing Node
+
+Here's a complete example of a custom image processing node:
+
+```python
+from typing_extensions import override
+from comfy_api.latest import ComfyExtension, io
+import torch
+
+class ImageBlur(io.ComfyNode):
+    """Apply Gaussian blur to an image"""
+    
+    @classmethod
+    def define_schema(cls) -> io.Schema:
+        return io.Schema(
+            node_id="ImageBlur",
+            display_name="Image Blur",
+            category="image/filter",
+            inputs=[
+                io.Image.Input("image"),
+                io.Int.Input(
+                    "kernel_size",
+                    default=5,
+                    min=1,
+                    max=31,
+                    step=2,  # Ensure odd numbers
+                    display_mode=io.NumberDisplay.slider
+                ),
+                io.Float.Input(
+                    "sigma",
+                    default=1.0,
+                    min=0.1,
+                    max=10.0,
+                    step=0.1
+                ),
+            ],
+            outputs=[
+                io.Image.Output(),
+            ],
+        )
+    
+    @classmethod
+    def execute(cls, image, kernel_size, sigma) -> io.NodeOutput:
+        import torchvision.transforms.functional as TF
+        
+        # Ensure kernel_size is odd
+        if kernel_size % 2 == 0:
+            kernel_size += 1
+        
+        # Apply Gaussian blur
+        # Image shape: [batch, height, width, channels]
+        # Convert to [batch, channels, height, width]
+        image = image.permute(0, 3, 1, 2)
+        blurred = TF.gaussian_blur(image, kernel_size, sigma)
+        # Convert back
+        blurred = blurred.permute(0, 2, 3, 1)
+        
+        return io.NodeOutput(blurred)
+
+class ImageFilterExtension(ComfyExtension):
+    @override
+    async def get_node_list(self) -> list[type[io.ComfyNode]]:
+        return [ImageBlur]
+
+async def comfy_entrypoint() -> ImageFilterExtension:
+    return ImageFilterExtension()
+```
+
+## Example: Model Processing Node
+
+Example of working with models:
+
+```python
+class ModelMerger(io.ComfyNode):
+    """Merge two models with a specified ratio"""
+    
+    @classmethod
+    def define_schema(cls) -> io.Schema:
+        return io.Schema(
+            node_id="ModelMerger",
+            display_name="Model Merger",
+            category="model",
+            inputs=[
+                io.Model.Input("model1"),
+                io.Model.Input("model2"),
+                io.Float.Input(
+                    "ratio",
+                    default=0.5,
+                    min=0.0,
+                    max=1.0,
+                    step=0.01,
+                    display_mode=io.NumberDisplay.slider
+                ),
+            ],
+            outputs=[
+                io.Model.Output(),
+            ],
+        )
+    
+    @classmethod
+    def execute(cls, model1, model2, ratio) -> io.NodeOutput:
+        # Clone the first model
+        merged_model = model1.clone()
+        
+        # Get state dicts
+        state_dict1 = model1.model.state_dict()
+        state_dict2 = model2.model.state_dict()
+        
+        # Merge weights
+        merged_state = {}
+        for key in state_dict1.keys():
+            if key in state_dict2:
+                merged_state[key] = (
+                    state_dict1[key] * (1 - ratio) + 
+                    state_dict2[key] * ratio
+                )
+            else:
+                merged_state[key] = state_dict1[key]
+        
+        # Load merged weights
+        merged_model.model.load_state_dict(merged_state)
+        
+        return io.NodeOutput(merged_model)
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Type Hints" icon="code">
+    Use proper type hints for better IDE support and error detection
+  </Card>
+  
+  <Card title="Error Handling" icon="shield-check">
+    Add try-except blocks and provide meaningful error messages
+  </Card>
+  
+  <Card title="Memory Management" icon="memory">
+    Clean up large tensors and models when done processing
+  </Card>
+  
+  <Card title="Documentation" icon="book">
+    Write clear docstrings and comments for complex logic
+  </Card>
+  
+  <Card title="Lazy Inputs" icon="bolt">
+    Use lazy evaluation for expensive or conditional operations
+  </Card>
+  
+  <Card title="Unique IDs" icon="fingerprint">
+    Ensure node_id is unique and descriptive
+  </Card>
+</CardGroup>
+
+## Debugging Tips
+
+<AccordionGroup>
+  <Accordion title="Node Not Appearing">
+    - Check that `comfy_entrypoint()` is defined
+    - Verify the extension is in the `custom_nodes` directory
+    - Look for errors in the ComfyUI console on startup
+    - Ensure `node_id` is unique
+  </Accordion>
+  
+  <Accordion title="Execution Errors">
+    - Add print statements to track execution flow
+    - Check that parameter names match between schema and execute
+    - Verify input/output tensor shapes and types
+    - Use try-except to catch and log exceptions
+  </Accordion>
+  
+  <Accordion title="Performance Issues">
+    - Profile your code to find bottlenecks
+    - Use lazy evaluation for expensive operations
+    - Consider async operations for I/O
+    - Monitor memory usage with `torch.cuda.memory_summary()`
+  </Accordion>
+</AccordionGroup>
+
+## Distribution
+
+To distribute your custom node:
+
+<Steps>
+  <Step title="Create Repository">
+    Create a Git repository with your extension code
+  </Step>
+  
+  <Step title="Add README">
+    Document installation instructions and usage
+  </Step>
+  
+  <Step title="Include Requirements">
+    Add `requirements.txt` for dependencies
+  </Step>
+  
+  <Step title="Add Examples">
+    Include example workflows demonstrating your nodes
+  </Step>
+  
+  <Step title="Submit to Registry">
+    Submit to ComfyUI custom node registry for discoverability
+  </Step>
+</Steps>
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Memory Management" href="/advanced/memory-management" icon="memory">
+    Learn about VRAM optimization for your custom nodes
+  </Card>
+  
+  <Card title="Quantization" href="/advanced/quantization" icon="compress">
+    Work with quantized models in your nodes
+  </Card>
+  
+  <Card title="Model Merging" href="/advanced/model-merging" icon="code-merge">
+    Understand model merging techniques
+  </Card>
+</CardGroup>

@@ -1,0 +1,570 @@
+---
+title: Video Models
+description: Complete guide to video generation and image-to-video models in ComfyUI
+---
+
+ComfyUI supports state-of-the-art video generation models, enabling text-to-video, image-to-video, and video editing workflows.
+
+## Stable Video Diffusion (SVD)
+
+<Info>
+  SVD is the foundation for image-to-video generation, converting static images into smooth video sequences.
+</Info>
+
+### Architecture
+
+**Model Configuration:**
+- Model channels: 320
+- In channels: 8
+- Transformer depth: [1, 1, 1, 1, 1, 1, 0, 0]
+- Context dimension: 1024
+- ADM channels: 768
+- Temporal attention: Enabled
+- Temporal resblocks: Enabled
+
+**Latent Format:**
+- Same as SD15 (4 channels, 8x spatial downscaling)
+- Sigma range: 0.002 to 700.0
+
+### Usage
+
+**Loading the Model:**
+```python
+# Use ImageOnlyCheckpointLoader
+ckpt_name = "svd_xt.safetensors"
+# Returns: MODEL, CLIP_VISION, VAE
+```
+
+**Conditioning:**
+Use `SVD_img2vid_Conditioning` node:
+- **Input image**: Reference frame
+- **Width/Height**: Output resolution (default 1024x576)
+- **Video frames**: Number of frames (default 14)
+- **Motion bucket ID**: Controls motion amount (1-1023, default 127)
+- **FPS**: Frames per second (default 6)
+- **Augmentation level**: Noise added to input (0-10, default 0)
+
+**Guidance:**
+- Use `VideoLinearCFGGuidance` for linear CFG scaling
+- Use `VideoTriangleCFGGuidance` for triangle wave CFG
+
+**Workflows:**
+- [SVD Examples](https://comfyanonymous.github.io/ComfyUI_examples/video/)
+
+---
+
+## Mochi
+
+<Tip>
+  Mochi provides high-quality text-to-video generation with excellent motion quality.
+</Tip>
+
+### Architecture
+
+**Model Configuration:**
+- Image model: mochi_preview
+- Shift: 6.0, multiplier: 1.0
+- Latent format: Mochi (12 channels)
+- Memory usage factor: 2.0
+- Supported dtypes: BF16, FP32
+
+**Latent Dimensions:**
+- Channels: 12
+- Temporal compression: 6x (length = (frames-1)//6 + 1)
+- Spatial compression: 8x
+
+### Text Encoder
+
+- **Model**: T5-XXL (Mochi variant)
+- **Tokenizer**: MochiT5Tokenizer
+
+### Usage
+
+**Creating Empty Latent:**
+```python
+# Use EmptyMochiLatentVideo node
+width = 848
+height = 480
+length = 25  # frames (must be 7 + 6n)
+batch_size = 1
+```
+
+**Supported Resolutions:**
+- Default: 848x480
+- Must be multiples of 16
+- Frame count: 7, 13, 19, 25, 31, 37, etc. (7 + 6n)
+
+**Model Files Location:**
+```
+models/checkpoints/mochi_preview_dit.safetensors
+models/vae/mochi_preview_vae.safetensors
+models/text_encoders/t5xxl_fp16.safetensors
+```
+
+**Workflows:**
+- [Mochi Examples](https://comfyanonymous.github.io/ComfyUI_examples/mochi/)
+
+---
+
+## LTX-Video
+
+<Warning>
+  LTX-Video requires significant VRAM for longer videos. Use batch size 1 and lower resolutions for 12GB GPUs.
+</Warning>
+
+### Architecture
+
+**Model Configuration:**
+- Image model: ltxv
+- Shift: 2.37
+- Latent format: LTXV (128 channels)
+- Memory usage factor: 5.5 (scales with cross-attention dimension)
+- Supported dtypes: BF16, FP32
+
+**Latent Dimensions:**
+- Channels: 128
+- Temporal compression: 8x (length = (frames-1)//8 + 1)
+- Spatial compression: 32x (height/32, width/32)
+
+### Text Encoder
+
+- **Model**: T5-XXL (LTXV variant)
+- **Tokenizer**: LTXVT5Tokenizer
+
+### Usage
+
+**Empty Latent Creation:**
+```python
+# Use EmptyLTXVLatentVideo node
+width = 768  # must be multiple of 32
+height = 512 # must be multiple of 32
+length = 97  # must be 1 + 8n (1, 9, 17, 25, 33, 41, 49, 57, 65, 73, 81, 89, 97...)
+batch_size = 1
+```
+
+**Image-to-Video:**
+```python
+# Use LTXVImgToVideo node
+# Encodes first frame and creates latent with masked conditioning
+strength = 1.0  # Conditioning strength (0.0-1.0)
+```
+
+**Image-to-Video In-Place:**
+```python
+# Use LTXVImgToVideoInplace node  
+# Modifies existing latent instead of creating new one
+bypass = False  # Set True to skip conditioning
+```
+
+### Advanced Features
+
+**Adding Guide Frames:**
+```python
+# Use LTXVAddGuide node
+frame_idx = 0     # Where to insert guide (must be 8n or 0)
+strength = 1.0    # Guide strength
+# Supports multi-frame guides (8n+1 frames)
+```
+
+**Conditioning:**
+```python
+# Use LTXVConditioning node
+frame_rate = 25.0  # FPS for temporal consistency
+```
+
+**Model Sampling:**
+```python
+# Use ModelSamplingLTXV node
+max_shift = 2.05
+base_shift = 0.95
+# Automatically adjusts based on latent size
+```
+
+**Custom Scheduler:**
+```python
+# Use LTXVScheduler node
+steps = 20
+max_shift = 2.05
+base_shift = 0.95
+stretch = True
+terminal = 0.1
+```
+
+**Preprocessing:**
+```python
+# Use LTXVPreprocess node
+img_compression = 35  # H.264 compression (0-100)
+# Helps model generalize by adding realistic compression artifacts
+```
+
+### LTXAV (Audio-Video)
+
+**Architecture:**
+- Image model: ltxav
+- Latent format: LTXAV
+- Memory usage factor: 0.077
+
+**Features:**
+- Combined audio-video generation
+- Use `LTXVConcatAVLatent` to combine video and audio latents
+- Use `LTXVSeparateAVLatent` to split them back
+
+**Workflows:**
+- [LTX-Video Examples](https://comfyanonymous.github.io/ComfyUI_examples/ltxv/)
+
+---
+
+## Hunyuan Video
+
+<Tip>
+  Hunyuan Video excels at realistic motion and Chinese language prompts.
+</Tip>
+
+### Architecture
+
+**Model Configuration:**
+- Image model: hunyuan_video
+- Shift: 7.0
+- Latent format: HunyuanVideo
+- Memory usage factor: 1.8
+- Supported dtypes: BF16, FP32
+
+### Text Encoder
+
+- **Model**: Llama-based (multilingual)
+- **Tokenizer**: HunyuanVideoTokenizer
+- Excellent Chinese and English support
+
+### Variants
+
+**Hunyuan Video Base:**
+- Text-to-video generation
+- Standard input channels
+
+**Hunyuan Video I2V (Image-to-Video):**
+- In channels: 33 (includes image conditioning)
+- Converts images to videos
+
+**Hunyuan Video Skyreels I2V:**
+- In channels: 32
+- Specialized I2V variant
+
+**Hunyuan Video 1.5:**
+- Latest version with improved quality
+- [Hunyuan Video 1.5 Tutorial](https://docs.comfy.org/tutorials/video/hunyuan/hunyuan-video-1-5)
+
+### Usage
+
+**Model Files:**
+```
+models/checkpoints/hunyuan_video_dit.safetensors
+models/vae/hunyuan_video_vae.safetensors
+models/text_encoders/llama3_8b.safetensors
+```
+
+**Workflows:**
+- [Hunyuan Video Examples](https://comfyanonymous.github.io/ComfyUI_examples/hunyuan_video/)
+
+---
+
+## Wan 2.1
+
+### Architecture
+
+**Model Configuration:**
+- Image model: wan2.1
+- Latent format: Wan21
+- Memory usage factor: 0.9 (scales with model dimension)
+- Shift: 8.0
+- Supported dtypes: FP16, BF16, FP32
+
+### Text Encoder
+
+- **Model**: UMT5-XXL
+- **Tokenizer**: WanT5Tokenizer
+
+### Variants
+
+**WAN21_T2V (Text-to-Video):**
+- Model type: t2v
+- Standard text-to-video generation
+
+**WAN21_I2V (Image-to-Video):**
+- Model type: i2v
+- In dimension: 36
+- Image-to-video conversion
+
+**WAN21_FunControl2V:**
+- Model type: i2v
+- In dimension: 48
+- Advanced control features
+
+**WAN21_Camera:**
+- Model type: camera
+- In dimension: 32
+- Camera motion control
+
+**WAN21_Vace:**
+- Model type: vace
+- Memory factor: 1.2x higher
+- Video acceleration/editing
+
+**WAN21_HuMo:**
+- Model type: humo
+- Human motion generation
+
+**WAN21_FlowRVS:**
+- Model type: flow_rvs
+- Flow-based reverse sampling
+- Image-to-video enabled
+
+**WAN21_SCAIL:**
+- Model type: scail
+- Scaling and interpolation
+
+**Workflows:**
+- [Wan 2.1 Examples](https://comfyanonymous.github.io/ComfyUI_examples/wan/)
+
+---
+
+## Wan 2.2
+
+### Architecture Updates
+
+**Model Configuration:**
+- Latent format: Wan22 (48 output channels)
+- Additional specialized models
+
+### New Variants
+
+**WAN22_T2V:**
+- Out dimension: 48
+- Improved output quality
+- Image-to-video enabled
+
+**WAN22_Camera:**
+- Model type: camera_2.2
+- In dimension: 36
+- Enhanced camera control
+
+**WAN22_S2V (Speech-to-Video):**
+- Model type: s2v
+- Speech-driven video generation
+
+**WAN22_Animate:**
+- Model type: animate
+- Character animation specialized
+
+**Workflows:**
+- [Wan 2.2 Examples](https://comfyanonymous.github.io/ComfyUI_examples/wan22/)
+
+---
+
+## Cosmos
+
+### Cosmos T2V (Text-to-Video)
+
+**Architecture:**
+- Image model: cosmos
+- In channels: 16
+- Latent format: Cosmos1CV8x8x8
+- Memory usage factor: 1.6
+- Sigma data: 0.5, max: 80.0, min: 0.002
+- Supported dtypes: BF16, FP16, FP32
+
+**Text Encoder:**
+- T5-XXL (Cosmos variant)
+
+### Cosmos I2V (Image-to-Video)
+
+**Architecture:**
+- In channels: 17 (includes image)
+- Same base architecture as T2V
+
+### Cosmos T2I Predict2 (Text-to-Image)
+
+**Architecture:**
+- Image model: cosmos_predict2
+- In channels: 16
+- Latent format: Wan21
+- Memory usage factor: 1.0 (scales with model channels)
+- Sigma data: 1.0
+- Supported dtypes: BF16, FP16, FP32
+
+### Cosmos I2V Predict2
+
+**Architecture:**
+- In channels: 17
+- Image-to-video enabled
+
+---
+
+## Anima
+
+### Architecture
+
+**Model Configuration:**
+- Image model: anima
+- Shift: 3.0, multiplier: 1.0
+- Latent format: Wan21
+- Memory usage factor: 0.95 (scales with model channels)
+- Supported dtypes: BF16, FP16, FP32
+
+**Text Encoder:**
+- Qwen3-0.6B
+- Lightweight but effective
+
+**Memory Scaling:**
+- FP16 uses 1.4x more memory than BF16/FP32
+
+---
+
+## Chroma
+
+### Architecture
+
+**Model Configuration:**
+- Image model: chroma
+- Latent format: Flux
+- Memory usage factor: 3.2
+- Multiplier: 1.0
+- Supported dtypes: BF16, FP16, FP32
+
+**Text Encoder:**
+- T5-XXL (PixArt variant)
+
+### Chroma Radiance (Pixel Space)
+
+**Architecture:**
+- Image model: chroma_radiance
+- Latent format: ChromaRadiance
+- Memory usage factor: 0.044 (extremely efficient)
+- No spatial compression - operates on raw RGB patches
+- No VAE required
+
+---
+
+## Model Files
+
+### Default Locations
+
+```
+ComfyUI/
+├── models/
+│   ├── checkpoints/          # Main DiT models
+│   ├── vae/                  # Video VAE models
+│   ├── text_encoders/        # T5, Llama, etc.
+│   └── clip_vision/          # For SVD/SV3D
+```
+
+### File Naming Conventions
+
+**Mochi:**
+- DiffusionModel: `mochi_preview_dit.safetensors`
+- VAE: `mochi_preview_vae.safetensors`
+- Text encoder: `t5xxl_fp16.safetensors`
+
+**LTX-Video:**
+- Combined file or separate components
+- VAE: `ltxv_vae.safetensors`
+
+**Hunyuan Video:**
+- DiT: `hunyuan_video_dit.safetensors`
+- VAE: `hunyuan_video_vae.safetensors`
+- Text encoder: `llama3_8b.safetensors`
+
+---
+
+## Performance Optimization
+
+### Memory Management
+
+<Warning>
+  Video models require significantly more VRAM than image models. Plan accordingly.
+</Warning>
+
+**For 12GB GPUs:**
+```bash
+python main.py --lowvram --fp16-vae
+```
+
+**For 8GB GPUs:**
+```bash
+python main.py --lowvram --normalvram --fp16-vae
+```
+
+**For 6GB GPUs:**
+```bash
+python main.py --novram --fp16-vae --cpu-vae
+```
+
+### Resolution Guidelines
+
+**SVD:**
+- Recommended: 1024x576 or 768x768
+- Max: 1280x720 (requires more VRAM)
+
+**Mochi:**
+- Recommended: 848x480
+- Max: 1280x720 (with VRAM optimization)
+
+**LTX-Video:**
+- Recommended: 768x512 for longer videos
+- Max: 1024x768 for shorter clips
+
+**Hunyuan Video:**
+- Recommended: 720x480 or 960x544
+- Supports various aspect ratios
+
+### Speed Optimization
+
+**Temporal Attention:**
+- Video models benefit from `--use-pytorch-cross-attention`
+- AMD GPUs: Try `TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1`
+
+**Frame Count:**
+- Start with minimum frames (14 for SVD, 25 for Mochi)
+- Increase gradually based on VRAM availability
+
+**CFG Guidance:**
+- Lower CFG reduces memory usage
+- Use specialized guidance nodes for video (VideoLinearCFGGuidance)
+
+---
+
+## Advanced Techniques
+
+### Video CFG Scheduling
+
+**Linear CFG:**
+```python
+# VideoLinearCFGGuidance
+# Linearly interpolates from min_cfg to cfg_scale across frames
+min_cfg = 1.0
+```
+
+**Triangle CFG:**
+```python
+# VideoTriangleCFGGuidance  
+# Triangle wave pattern for dynamic guidance
+min_cfg = 1.0
+```
+
+### Context Windows
+
+- Use `ConditioningSetAreaPercentageVideo` for temporal conditioning
+- Control spatial and temporal regions independently
+
+### Batching
+
+- Video models typically use batch_size=1
+- Multiple batches possible with sufficient VRAM
+- Consider temporal consistency when batching
+
+---
+
+## Resources
+
+- [Video Examples](https://comfyanonymous.github.io/ComfyUI_examples/video/)
+- [SVD Paper](https://stability.ai/research/stable-video-diffusion)
+- [ComfyUI Video Wiki](https://github.com/comfyanonymous/ComfyUI/wiki)

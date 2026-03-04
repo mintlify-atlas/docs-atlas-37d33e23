@@ -1,0 +1,491 @@
+---
+title: Installing and Managing Extensions
+description: Complete guide to installing, updating, and managing ComfyUI custom nodes and extensions
+---
+
+Learn how to extend ComfyUI's functionality by installing custom nodes and extensions from the community.
+
+## Installation Methods
+
+There are three primary ways to install custom nodes:
+
+<CardGroup cols={3}>
+  <Card title="ComfyUI Manager" icon="store">
+    Easiest method with GUI
+  </Card>
+  <Card title="Manual Git Clone" icon="code-branch">
+    Direct installation
+  </Card>
+  <Card title="comfy-cli" icon="terminal">
+    Command-line tool
+  </Card>
+</CardGroup>
+
+## Using ComfyUI Manager
+
+The recommended method for most users.
+
+### Setup
+
+<Steps>
+  <Step title="Install Manager Requirements">
+    ```bash
+    pip install -r manager_requirements.txt
+    ```
+  </Step>
+  
+  <Step title="Enable Manager">
+    ```bash
+    python main.py --enable-manager
+    ```
+  </Step>
+  
+  <Step title="Access Manager UI">
+    Open ComfyUI and click the **Manager** button
+  </Step>
+</Steps>
+
+### Installing Nodes
+
+<Steps>
+  <Step title="Browse Extensions">
+    Search or browse available custom nodes in the Manager
+  </Step>
+  
+  <Step title="Select Extension">
+    Click on the extension you want to install
+  </Step>
+  
+  <Step title="Install">
+    Click the **Install** button
+  </Step>
+  
+  <Step title="Restart ComfyUI">
+    Restart ComfyUI to load the new nodes
+  </Step>
+</Steps>
+
+<Tip>
+The manager automatically handles dependencies and git operations for you.
+</Tip>
+
+## Manual Installation
+
+Install extensions manually using git.
+
+### Prerequisites
+
+- Git installed on your system
+- Write access to the ComfyUI directory
+
+### Installation Steps
+
+<Steps>
+  <Step title="Navigate to Custom Nodes">
+    ```bash
+    cd ComfyUI/custom_nodes/
+    ```
+  </Step>
+  
+  <Step title="Clone Repository">
+    ```bash
+    git clone https://github.com/username/extension-name
+    ```
+  </Step>
+  
+  <Step title="Install Dependencies">
+    ```bash
+    cd extension-name
+    pip install -r requirements.txt
+    ```
+  </Step>
+  
+  <Step title="Restart ComfyUI">
+    Restart ComfyUI to load the new nodes
+  </Step>
+</Steps>
+
+### Example
+
+```bash
+cd ComfyUI/custom_nodes/
+git clone https://github.com/example/comfyui-custom-nodes
+cd comfyui-custom-nodes
+pip install -r requirements.txt
+cd ../..
+python main.py
+```
+
+## Using comfy-cli
+
+The official ComfyUI command-line tool.
+
+### Installation
+
+```bash
+pip install comfy-cli
+```
+
+### Managing Extensions
+
+<CodeGroup>
+```bash Install ComfyUI
+comfy install
+```
+
+```bash Install Extension
+comfy node install extension-name
+```
+
+```bash Update Extensions
+comfy node update
+```
+
+```bash List Extensions
+comfy node list
+```
+</CodeGroup>
+
+For complete documentation, see the [comfy-cli docs](https://docs.comfy.org/comfy-cli/getting-started).
+
+## Managing Installed Extensions
+
+### Updating Extensions
+
+#### Via Manager
+
+1. Open ComfyUI Manager
+2. Navigate to **Update** tab
+3. Select extensions to update
+4. Click **Update**
+5. Restart ComfyUI
+
+#### Via Git
+
+```bash
+cd ComfyUI/custom_nodes/extension-name
+git pull
+pip install -r requirements.txt --upgrade
+```
+
+### Disabling Extensions
+
+To temporarily disable an extension without removing it:
+
+<Tabs>
+  <Tab title="Rename Method">
+    Rename the extension folder:
+    ```bash
+    cd ComfyUI/custom_nodes/
+    mv extension-name extension-name.disabled
+    ```
+    Restart ComfyUI.
+  </Tab>
+  
+  <Tab title="Manager Method">
+    Use the ComfyUI Manager UI to disable the extension.
+  </Tab>
+</Tabs>
+
+### Removing Extensions
+
+To completely remove an extension:
+
+```bash
+cd ComfyUI/custom_nodes/
+rm -rf extension-name
+```
+
+Restart ComfyUI after removal.
+
+<Warning>
+Removing an extension will break workflows that depend on it.
+</Warning>
+
+## Finding Extensions
+
+### Official Sources
+
+<CardGroup cols={2}>
+  <Card title="ComfyUI Manager" icon="store">
+    Browse extensions directly in the Manager UI
+  </Card>
+  
+  <Card title="GitHub" icon="github">
+    Search GitHub for "comfyui-" repositories
+  </Card>
+</CardGroup>
+
+### Popular Extensions
+
+Some popular categories of extensions:
+
+- **Image Processing**: Advanced filters, effects, and transformations
+- **ControlNet**: Additional ControlNet models and processors
+- **Video**: Video generation and processing nodes
+- **Utilities**: Workflow helpers, converters, and tools
+- **Model Loaders**: Support for additional model formats
+
+## Extension Structure
+
+Understanding extension structure helps with troubleshooting:
+
+```
+extension-name/
+├── __init__.py              # Entry point
+├── nodes/                   # Node definitions
+│   └── my_nodes.py
+├── web/                     # Frontend extensions
+│   └── extensions.js
+├── example_workflows/       # Example workflows
+│   └── example.json
+├── locales/                 # Translations
+│   └── en/
+│       └── main.json
+├── requirements.txt         # Python dependencies
+└── README.md               # Documentation
+```
+
+## Extension Configuration
+
+### Model Paths
+
+Some extensions require specific model files. Configure paths in `extra_model_paths.yaml`:
+
+```yaml
+comfyui:
+  base_path: /path/to/stable-diffusion-webui/
+  
+  checkpoints: models/Stable-diffusion/
+  vae: models/VAE/
+  loras: models/Lora/
+  controlnet: models/ControlNet/
+```
+
+### Environment Variables
+
+Some extensions use environment variables:
+
+```bash
+# Example: Set cache directory
+export COMFYUI_CACHE_DIR=/path/to/cache
+
+# Example: Set model directory
+export COMFYUI_MODEL_DIR=/path/to/models
+
+python main.py --enable-manager
+```
+
+## Troubleshooting
+
+### Extension Not Loading
+
+<AccordionGroup>
+  <Accordion title="Check Console Output" icon="terminal">
+    Look for error messages when starting ComfyUI:
+    
+    ```bash
+    python main.py --enable-manager
+    ```
+    
+    Common errors:
+    - Import errors (missing dependencies)
+    - Syntax errors in extension code
+    - Duplicate node IDs
+  </Accordion>
+  
+  <Accordion title="Verify Dependencies" icon="package">
+    Ensure all required packages are installed:
+    
+    ```bash
+    cd ComfyUI/custom_nodes/extension-name
+    pip install -r requirements.txt
+    ```
+  </Accordion>
+  
+  <Accordion title="Check Compatibility" icon="code-compare">
+    Verify the extension is compatible with your ComfyUI version:
+    
+    - Check the extension's README
+    - Look for version requirements
+    - Check the extension's issue tracker
+  </Accordion>
+  
+  <Accordion title="File Permissions" icon="lock">
+    Ensure ComfyUI has read access:
+    
+    ```bash
+    chmod -R 755 ComfyUI/custom_nodes/extension-name
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Import Errors
+
+If you see import errors:
+
+```python
+ImportError: No module named 'some_package'
+```
+
+Install the missing package:
+
+```bash
+pip install some_package
+```
+
+Or reinstall extension requirements:
+
+```bash
+cd ComfyUI/custom_nodes/extension-name
+pip install -r requirements.txt --upgrade --force-reinstall
+```
+
+### Conflicting Extensions
+
+If two extensions conflict:
+
+1. **Check node IDs**: Extensions may register nodes with the same ID
+2. **Disable one**: Temporarily disable one extension
+3. **Check logs**: Look for conflict messages in the console
+4. **Contact authors**: Report the issue to extension maintainers
+
+### Performance Issues
+
+If ComfyUI becomes slow after installing extensions:
+
+<Steps>
+  <Step title="Identify Culprit">
+    Disable extensions one by one to find the problematic one
+  </Step>
+  
+  <Step title="Check Resource Usage">
+    Monitor CPU, GPU, and memory usage
+  </Step>
+  
+  <Step title="Update Extension">
+    Ensure you're using the latest version
+  </Step>
+  
+  <Step title="Report Issue">
+    Report performance issues to the extension author
+  </Step>
+</Steps>
+
+## Security Considerations
+
+<Warning>
+Custom nodes execute Python code on your machine. Only install extensions from trusted sources.
+</Warning>
+
+### Safety Checklist
+
+<Accordion title="Before Installing" icon="shield-check">
+  - Review the extension's source code on GitHub
+  - Check the repository's stars and forks
+  - Read user reviews and issues
+  - Verify the author is trustworthy
+  - Check when it was last updated
+</Accordion>
+
+### Code Review
+
+Before installing, review critical files:
+
+- `__init__.py` - Entry point
+- Node execution code
+- Any file operations
+- Network requests
+
+```bash
+# View the main entry point
+cat ComfyUI/custom_nodes/extension-name/__init__.py
+
+# Search for potentially dangerous operations
+grep -r "os.system" ComfyUI/custom_nodes/extension-name/
+grep -r "subprocess" ComfyUI/custom_nodes/extension-name/
+grep -r "eval" ComfyUI/custom_nodes/extension-name/
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Keep Updated" icon="arrow-rotate-right">
+    Regularly update extensions for bug fixes and features
+  </Card>
+  
+  <Card title="Backup Workflows" icon="floppy-disk">
+    Save workflows before installing new extensions
+  </Card>
+  
+  <Card title="Test Separately" icon="flask">
+    Test new extensions in isolation before using in production
+  </Card>
+  
+  <Card title="Document Dependencies" icon="book">
+    Keep track of which workflows use which extensions
+  </Card>
+</CardGroup>
+
+### Version Control
+
+Track your custom nodes with git:
+
+```bash
+cd ComfyUI/custom_nodes/
+git init
+git add .
+git commit -m "Initial custom nodes setup"
+```
+
+This allows you to:
+- Revert problematic updates
+- Track which extensions you have
+- Share your setup with others
+
+## Advanced Topics
+
+### Shared Model Paths
+
+Share models between ComfyUI and other UIs using `extra_model_paths.yaml`:
+
+```yaml
+# Share with Stable Diffusion WebUI
+stable_diffusion:
+  base_path: /path/to/stable-diffusion-webui/
+  checkpoints: models/Stable-diffusion/
+  loras: models/Lora/
+  
+# Share with Automatic1111
+automatic1111:
+  base_path: /path/to/automatic1111/
+  checkpoints: models/Stable-diffusion/
+```
+
+See the [example config](https://github.com/comfyanonymous/ComfyUI/blob/master/extra_model_paths.yaml.example) for details.
+
+### Custom Extension Development
+
+To create your own extensions:
+
+<CardGroup cols={2}>
+  <Card title="Creating Nodes" icon="code" href="/extensions/creating-nodes">
+    Learn to create custom nodes
+  </Card>
+  
+  <Card title="Node API" icon="book" href="/extensions/node-api">
+    Complete API reference
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Manager Overview" icon="grid" href="/extensions/manager-overview">
+    Learn more about ComfyUI Manager
+  </Card>
+  
+  <Card title="Best Practices" icon="star" href="/extensions/best-practices">
+    Best practices for using extensions
+  </Card>
+</CardGroup>

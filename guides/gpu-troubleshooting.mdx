@@ -1,0 +1,492 @@
+---
+title: GPU Troubleshooting
+description: Resolve GPU-specific issues and optimize GPU configuration
+---
+
+This guide covers GPU-specific troubleshooting for NVIDIA, AMD, Intel, and other accelerators supported by ComfyUI.
+
+## NVIDIA GPU Issues
+
+<Accordion title="CUDA not detected or unavailable">
+  Your NVIDIA GPU is not being recognized by PyTorch.
+
+  **Diagnosis:**
+  Check if CUDA is available:
+  ```python
+  import torch
+  print(torch.cuda.is_available())
+  print(torch.version.cuda)
+  ```
+
+  **Solution:**
+
+  1. Update NVIDIA drivers to the latest version
+
+  2. Reinstall PyTorch with CUDA support:
+     ```bash
+     pip uninstall torch torchvision torchaudio
+     pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu130
+     ```
+
+  3. For older GPUs (GTX 10 series), use CUDA 12.6:
+     ```bash
+     pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu126
+     ```
+
+  4. Verify CUDA installation:
+     ```bash
+     nvidia-smi
+     ```
+</Accordion>
+
+<Accordion title="cudaMallocAsync errors or warnings">
+  Async memory allocation may not be supported on your GPU.
+
+  **ComfyUI checks for blacklisted cards** and shows a warning if detected.
+
+  **Solution:**
+  ```bash
+  python main.py --disable-cuda-malloc
+  ```
+
+  This disables async allocation and uses standard CUDA malloc.
+</Accordion>
+
+<Accordion title="GTX 16 Series (1660, 1650) black outputs or artifacts">
+  GTX 16 series cards have broken FP16 support in their hardware.
+
+  **Solution:**
+  Force FP32 computation:
+  ```bash
+  python main.py --force-fp32
+  ```
+
+  This will use more VRAM and be slower, but produces correct results.
+
+  **Affected cards:**
+  - GTX 1660 (all variants)
+  - GTX 1650 (all variants)
+  - GTX 1630
+  - T500, T550, T600, T1000, T1200, T2000
+  - MX450, MX550
+  - CMP 30HX
+</Accordion>
+
+<Accordion title="RTX 30/40 Series not using Tensor Cores">
+  Modern NVIDIA GPUs should automatically use optimal precision.
+
+  **Verification:**
+  ComfyUI automatically enables FP16 on GPUs with compute capability 8.0+ (RTX 30/40 series).
+
+  **Force optimizations:**
+  ```bash
+  python main.py --fast
+  ```
+
+  This enables:
+  - FP16 accumulation for matrix operations
+  - cuDNN auto-tuning for optimal kernels
+
+  **FP8 Support (RTX 40 series, H100, A100):**
+  ```bash
+  python main.py --fp8-e4m3fn-unet
+  ```
+
+  FP8 is automatically used when models are loaded in FP8 format on compute capability 8.9+ GPUs.
+</Accordion>
+
+<Accordion title="Multiple NVIDIA GPUs - selecting specific GPU">
+  Choose which GPU to use when multiple are available.
+
+  **Solution:**
+
+  Set CUDA device:
+  ```bash
+  python main.py --cuda-device 0
+  ```
+
+  Or use environment variable:
+  ```bash
+  CUDA_VISIBLE_DEVICES=1 python main.py
+  ```
+
+  Set default device (reorders device priority):
+  ```bash
+  python main.py --default-device 1
+  ```
+
+  Check available GPUs:
+  ```bash
+  nvidia-smi -L
+  ```
+</Accordion>
+
+<Accordion title="NVIDIA GPU memory leak or not releasing VRAM">
+  VRAM is not being released after model unloading.
+
+  **Solution:**
+
+  ComfyUI has automatic garbage collection and cache clearing. If issues persist:
+
+  1. Check for circular references in custom nodes (ComfyUI will log warnings about potential memory leaks)
+
+  2. Manually trigger cleanup via the UI or API
+
+  3. Enable deterministic mode to disable some caching:
+     ```bash
+     python main.py --deterministic
+     ```
+
+  4. Restart ComfyUI to clear all memory
+</Accordion>
+
+## AMD GPU Issues
+
+<Accordion title="AMD GPU not detected (Linux)">
+  ROCm is not properly installed or configured.
+
+  **Solution:**
+
+  1. Install ROCm following AMD's official guide
+
+  2. Install PyTorch with ROCm support:
+     ```bash
+     pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm7.1
+     ```
+
+  3. For latest ROCm 7.2 (may improve performance):
+     ```bash
+     pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/rocm7.2
+     ```
+
+  4. Verify detection:
+     ```python
+     import torch
+     print(torch.version.hip)
+     print(torch.cuda.is_available())
+     ```
+</Accordion>
+
+<Accordion title="AMD GPU not detected (Windows - RDNA 3/4)">
+  Windows support for AMD is experimental and limited to RDNA 3, 3.5, and 4.
+
+  **Supported Cards:**
+  - RDNA 3: RX 7000 series
+  - RDNA 3.5: Strix Halo, Ryzen AI Max+ 365
+  - RDNA 4: RX 9000 series
+
+  **Solution:**
+
+  Install architecture-specific PyTorch:
+
+  **RDNA 3 (RX 7000):**
+  ```bash
+  pip install --pre torch torchvision torchaudio --index-url https://rocm.nightlies.amd.com/v2/gfx110X-all/
+  ```
+
+  **RDNA 3.5 (Strix Halo):**
+  ```bash
+  pip install --pre torch torchvision torchaudio --index-url https://rocm.nightlies.amd.com/v2/gfx1151/
+  ```
+
+  **RDNA 4 (RX 9000):**
+  ```bash
+  pip install --pre torch torchvision torchaudio --index-url https://rocm.nightlies.amd.com/v2/gfx120X-all/
+  ```
+</Accordion>
+
+<Accordion title="Unsupported AMD GPU architecture override">
+  Older or unsupported AMD GPUs need architecture version override.
+
+  **Solution:**
+
+  **For RDNA2 and older (RX 6700, 6600, etc.):**
+  ```bash
+  HSA_OVERRIDE_GFX_VERSION=10.3.0 python main.py
+  ```
+
+  **For RDNA3 (RX 7600):**
+  ```bash
+  HSA_OVERRIDE_GFX_VERSION=11.0.0 python main.py
+  ```
+
+  **Older GCN cards (RX 580, Vega):**
+  May require specific GFX version. Check your card's GCN architecture version.
+</Accordion>
+
+<Accordion title="AMD GPU slow performance or crashes">
+  AMD GPUs need specific optimizations for best performance.
+
+  **Solution:**
+
+  1. **Enable PyTorch Cross Attention** (RDNA3+):
+     ```bash
+     TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1 python main.py --use-pytorch-cross-attention
+     ```
+
+  2. **Enable TunableOp** (first run slow, subsequent faster):
+     ```bash
+     PYTORCH_TUNABLEOP_ENABLED=1 python main.py
+     ```
+
+  3. **For RDNA2 and older**, re-enable cuDNN if experiencing issues:
+     ```bash
+     COMFYUI_ENABLE_MIOPEN=1 python main.py
+     ```
+     By default, cuDNN is disabled on RDNA3+ for better performance.
+
+  4. **Check ROCm version compatibility:**
+     ```python
+     import torch
+     print(torch.version.hip)
+     ```
+     - ROCm 7.0+ required for RDNA4
+     - ROCm 6.4+ recommended for best performance
+</Accordion>
+
+<Accordion title="AMD FP8 support (RDNA4, MI300)">
+  FP8 support on AMD requires specific hardware and software versions.
+
+  **Requirements:**
+  - GPU: RDNA4 (RX 9000) or MI300 series
+  - PyTorch: 2.7+
+  - ROCm: 6.4+
+
+  **Enable FP8:**
+  ComfyUI automatically detects FP8 support. To force:
+  ```bash
+  python main.py --fp8-e4m3fn-unet
+  ```
+
+  **Verify support:**
+  Check console output during startup for "FP8 ops supported" message.
+</Accordion>
+
+## Intel GPU Issues
+
+<Accordion title="Intel Arc GPU not detected">
+  Intel XPU support requires specific PyTorch build.
+
+  **Solution:**
+
+  1. Install Intel Extension for PyTorch:
+     ```bash
+     pip install intel-extension-for-pytorch
+     ```
+
+  2. Install PyTorch XPU:
+     ```bash
+     pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
+     ```
+
+  3. For latest features:
+     ```bash
+     pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/xpu
+     ```
+
+  4. Verify detection:
+     ```python
+     import torch
+     print(torch.xpu.is_available())
+     print(torch.xpu.device_count())
+     ```
+</Accordion>
+
+<Accordion title="Intel Arc performance issues">
+  Intel GPUs benefit from IPEX optimizations.
+
+  **Solution:**
+
+  1. **IPEX optimization** is enabled by default. If experiencing issues:
+     ```bash
+     python main.py --disable-ipex-optimize
+     ```
+
+  2. **Select specific device:**
+     ```bash
+     python main.py --oneapi-device-selector "level_zero:0"
+     ```
+
+  3. **Check driver version:**
+     Intel frequently updates drivers with performance improvements. Ensure you have the latest Intel graphics drivers.
+
+   4. **FP16 support:**
+      ComfyUI automatically detects FP16 capability. On older PyTorch (before 2.3), FP16 is always enabled.
+</Accordion>
+
+## Other Accelerators
+
+<Accordion title="Ascend NPU (Huawei)">
+  **Requirements:**
+  - Ascend Basekit (driver, firmware, CANN)
+  - torch-npu package
+
+  **Installation:**
+  1. Install Ascend Basekit following [official guide](https://ascend.github.io/docs/sources/ascend/quick_install.html)
+  2. Install torch-npu following [installation instructions](https://ascend.github.io/docs/sources/pytorch/install.html)
+  3. Run ComfyUI normally - NPU will be automatically detected
+
+  **Device Selection:**
+  ```bash
+  python main.py --cuda-device 0
+  ```
+  (ASCEND_RT_VISIBLE_DEVICES is set automatically)
+</Accordion>
+
+<Accordion title="Cambricon MLU">
+  **Requirements:**
+  - Cambricon CNToolkit
+  - torch_mlu package
+
+  **Installation:**
+  1. Install CNToolkit following [official guide](https://www.cambricon.com/docs/sdk_1.15.0/cntoolkit_3.7.2/cntoolkit_install_3.7.2/index.html)
+  2. Install PyTorch MLU following [installation guide](https://www.cambricon.com/docs/sdk_1.15.0/cambricon_pytorch_1.17.0/user_guide_1.9/index.html)
+  3. Run ComfyUI - MLU will be automatically detected
+</Accordion>
+
+<Accordion title="Iluvatar Corex">
+  **Requirements:**
+  - Iluvatar Corex Toolkit
+  - Compatible PyTorch build
+
+  **Installation:**
+  1. Install Iluvatar Corex Toolkit following [official documentation](https://support.iluvatar.com/#/DocumentCentre?id=1&nameCenter=2&productId=520117912052801536)
+  2. Run ComfyUI - Corex will be automatically detected
+</Accordion>
+
+<Accordion title="DirectML (Not Recommended)">
+  DirectML support is deprecated and may be removed.
+
+  **Warning:** DirectML is very slow, hasn't been updated in over a year, and barely works. Use other options if available.
+
+  **If you must use DirectML:**
+  ```bash
+  pip install torch-directml
+  python main.py --directml 0
+  ```
+
+  Replace `0` with device index. Use `-1` for default device.
+
+  **Better alternatives:**
+  - Use CPU mode instead: `python main.py --cpu`
+  - Use WSL2 with CUDA if on Windows with NVIDIA GPU
+  - Use native PyTorch CUDA or ROCm
+</Accordion>
+
+## Apple Silicon (MPS)
+
+<Accordion title="Apple Silicon GPU issues">
+  Apple Silicon Macs use Metal Performance Shaders (MPS) for GPU acceleration.
+
+  **Automatic Detection:**
+  MPS is automatically detected and used on macOS 12.3+.
+
+  **Known Issues:**
+
+  **macOS 14.5+ Black Image Bug:**
+  Automatically mitigated by forcing upcast attention:
+  ```bash
+  python main.py --force-upcast-attention
+  ```
+
+  **Non-blocking transfers disabled:**
+  MPS doesn't support non-blocking memory transfers due to PyTorch limitation. This is automatic.
+
+  **BF16 support:**
+  Available on macOS 14+ with Apple Silicon.
+
+  **Force CPU mode if issues:**
+  ```bash
+  python main.py --cpu
+  ```
+
+  **VAE on CPU (save VRAM):**
+  ```bash
+  python main.py --cpu-vae
+  ```
+</Accordion>
+
+## General GPU Diagnostics
+
+<Accordion title="Check GPU detection and info">
+  **At startup**, ComfyUI logs:
+  - Total VRAM
+  - Total RAM
+  - Device name and type
+  - PyTorch version
+  - CUDA/ROCm/XPU version
+  - Allocator backend
+
+  **Enable verbose logging:**
+  ```bash
+  python main.py --verbose DEBUG
+  ```
+
+  **Check VRAM state:**
+  ComfyUI logs the selected VRAM state (HIGH_VRAM, NORMAL_VRAM, LOW_VRAM, etc.).
+
+  **Python script to check detection:**
+  ```python
+  import torch
+  import comfy.model_management as mm
+  
+  print(f"Device: {mm.get_torch_device()}")
+  print(f"Device name: {mm.get_torch_device_name(mm.get_torch_device())}")
+  print(f"Total VRAM: {mm.get_total_memory() / (1024**3):.2f} GB")
+  print(f"Free VRAM: {mm.get_free_memory() / (1024**3):.2f} GB")
+  print(f"VRAM State: {mm.vram_state}")
+  ```
+</Accordion>
+
+<Accordion title="GPU utilization is low">
+  GPU is not being fully utilized.
+
+  **Common Causes:**
+
+  1. **CPU bottleneck**: Check CPU usage while generating
+  2. **Slow storage**: Loading models from slow drives
+  3. **Wrong precision**: Using FP32 when FP16 is supported
+  4. **Insufficient VRAM**: Models constantly swapping
+
+  **Solutions:**
+
+  1. **Enable fast mode:**
+     ```bash
+     python main.py --fast
+     ```
+
+  2. **Use appropriate VRAM mode:**
+     ```bash
+     python main.py --highvram  # If you have enough VRAM
+     ```
+
+  3. **Enable async offloading:**
+     ```bash
+     python main.py --async-offload 2
+     ```
+
+  4. **Check preview method** (previews can slow generation):
+     ```bash
+     python main.py --preview-method auto
+     ```
+</Accordion>
+
+<Accordion title="Temperature or throttling issues">
+  GPU is overheating and throttling performance.
+
+  **Monitor GPU temperature:**
+  - NVIDIA: `nvidia-smi -l 1`
+  - AMD: `rocm-smi`
+  - Intel: Use system monitoring tools
+
+  **Solutions:**
+  1. Improve case airflow
+  2. Clean GPU heatsink and fans
+  3. Reduce power limit if necessary
+  4. Use lower precision to reduce heat:
+     ```bash
+     python main.py --fp16-unet
+     ```
+
+  **Note:** ComfyUI itself doesn't cause abnormal heat, but long generation sessions will heat up the GPU normally.
+</Accordion>

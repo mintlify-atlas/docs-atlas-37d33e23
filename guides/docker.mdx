@@ -1,0 +1,662 @@
+---
+title: Docker Deployment
+description: Deploy ComfyUI using Docker containers for production environments
+---
+
+Docker provides a consistent and isolated environment for running ComfyUI in production. This guide covers Docker deployment strategies and best practices.
+
+## Quick Start
+
+While ComfyUI doesn't provide official Docker images in the repository, you can easily create your own Dockerfile or use community images.
+
+### Basic Dockerfile
+
+Here's a production-ready Dockerfile for ComfyUI:
+
+```dockerfile Dockerfile
+FROM nvidia/cuda:13.0-runtime-ubuntu22.04
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    HF_HUB_DISABLE_TELEMETRY=1 \
+    DO_NOT_TRACK=1
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    python3.12 \
+    python3-pip \
+    git \
+    wget \
+    libgl1 \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# Clone ComfyUI
+RUN git clone https://github.com/comfyanonymous/ComfyUI.git . && \
+    git checkout v0.7.0  # Replace with desired version
+
+# Install PyTorch with CUDA support
+RUN pip install --no-cache-dir torch torchvision torchaudio \
+    --index-url https://download.pytorch.org/whl/cu130
+
+# Install ComfyUI dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Install manager dependencies (optional)
+RUN pip install --no-cache-dir -r manager_requirements.txt
+
+# Create directories for models and outputs
+RUN mkdir -p models/checkpoints models/vae models/loras \
+    models/embeddings models/upscale_models \
+    input output temp
+
+# Expose port
+EXPOSE 8188
+
+# Run ComfyUI
+CMD ["python3", "main.py", "--listen", "0.0.0.0", "--port", "8188"]
+```
+
+### Build and Run
+
+```bash
+# Build the image
+docker build -t comfyui:latest .
+
+# Run the container
+docker run -d \
+  --name comfyui \
+  --gpus all \
+  -p 8188:8188 \
+  -v $(pwd)/models:/app/models \
+  -v $(pwd)/output:/app/output \
+  -v $(pwd)/input:/app/input \
+  comfyui:latest
+```
+
+<Note>
+The `--gpus all` flag requires the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) to be installed.
+</Note>
+
+## Docker Compose Setup
+
+For easier management, use Docker Compose:
+
+```yaml docker-compose.yml
+version: '3.8'
+
+services:
+  comfyui:
+    image: comfyui:latest
+    container_name: comfyui
+    restart: unless-stopped
+    
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    
+    ports:
+      - "8188:8188"
+    
+    volumes:
+      - ./models:/app/models
+      - ./output:/app/output
+      - ./input:/app/input
+      - ./custom_nodes:/app/custom_nodes
+      - ./extra_model_paths.yaml:/app/extra_model_paths.yaml
+    
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    
+    command: >
+      python3 main.py
+      --listen 0.0.0.0
+      --port 8188
+      --highvram
+      --preview-method taesd
+      --enable-manager
+```
+
+### Start the Service
+
+```bash
+# Start ComfyUI
+docker compose up -d
+
+# View logs
+docker compose logs -f
+
+# Stop ComfyUI
+docker compose down
+```
+
+## Multi-Stage Build (Optimized)
+
+For smaller image sizes, use a multi-stage build:
+
+```dockerfile Dockerfile.multistage
+# Build stage
+FROM nvidia/cuda:13.0-devel-ubuntu22.04 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y \
+    python3.12 python3-pip git
+
+WORKDIR /build
+
+RUN git clone https://github.com/comfyanonymous/ComfyUI.git . && \
+    git checkout v0.7.0
+
+RUN pip install --no-cache-dir --target=/install \
+    torch torchvision torchaudio \
+    --index-url https://download.pytorch.org/whl/cu130
+
+RUN pip install --no-cache-dir --target=/install -r requirements.txt
+
+# Runtime stage
+FROM nvidia/cuda:13.0-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/install \
+    HF_HUB_DISABLE_TELEMETRY=1 \
+    DO_NOT_TRACK=1
+
+RUN apt-get update && apt-get install -y \
+    python3.12 \
+    libgl1 \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY --from=builder /build /app
+COPY --from=builder /install /install
+
+RUN mkdir -p models/checkpoints models/vae input output temp
+
+EXPOSE 8188
+
+CMD ["python3", "main.py", "--listen", "0.0.0.0"]
+```
+
+## GPU Support
+
+### NVIDIA GPUs
+
+Install the NVIDIA Container Toolkit:
+
+```bash
+# Add repository
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
+  sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+
+# Install
+sudo apt-get update
+sudo apt-get install -y nvidia-container-toolkit
+
+# Configure Docker
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo systemctl restart docker
+```
+
+### AMD GPUs (ROCm)
+
+```dockerfile Dockerfile.rocm
+FROM rocm/pytorch:latest
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    HF_HUB_DISABLE_TELEMETRY=1 \
+    TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1
+
+WORKDIR /app
+
+RUN git clone https://github.com/comfyanonymous/ComfyUI.git . && \
+    pip install --no-cache-dir -r requirements.txt
+
+RUN mkdir -p models/checkpoints input output temp
+
+EXPOSE 8188
+
+CMD ["python3", "main.py", "--listen", "0.0.0.0", "--use-pytorch-cross-attention"]
+```
+
+```bash
+# Run with AMD GPU
+docker run -d \
+  --name comfyui \
+  --device=/dev/kfd \
+  --device=/dev/dri \
+  --group-add video \
+  -p 8188:8188 \
+  -v $(pwd)/models:/app/models \
+  comfyui-rocm:latest
+```
+
+### CPU Only
+
+```dockerfile Dockerfile.cpu
+FROM python:3.12-slim
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1
+
+RUN apt-get update && apt-get install -y git && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+RUN git clone https://github.com/comfyanonymous/ComfyUI.git . && \
+    pip install --no-cache-dir torch torchvision torchaudio \
+    --index-url https://download.pytorch.org/whl/cpu && \
+    pip install --no-cache-dir -r requirements.txt
+
+RUN mkdir -p models/checkpoints input output temp
+
+EXPOSE 8188
+
+CMD ["python3", "main.py", "--listen", "0.0.0.0", "--cpu"]
+```
+
+## Volume Management
+
+### Persistent Storage
+
+Create named volumes for better management:
+
+```yaml docker-compose.volumes.yml
+version: '3.8'
+
+services:
+  comfyui:
+    image: comfyui:latest
+    volumes:
+      - comfyui-models:/app/models
+      - comfyui-output:/app/output
+      - comfyui-input:/app/input
+      - comfyui-custom-nodes:/app/custom_nodes
+    ports:
+      - "8188:8188"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  comfyui-models:
+  comfyui-output:
+  comfyui-input:
+  comfyui-custom-nodes:
+```
+
+### Shared Model Storage
+
+Share models between ComfyUI and other applications:
+
+```yaml extra_model_paths.yaml
+comfyui:
+  base_path: /shared/models
+  checkpoints: checkpoints/
+  vae: vae/
+  loras: loras/
+  upscale_models: upscale_models/
+  embeddings: embeddings/
+  controlnet: controlnet/
+  clip: clip/
+```
+
+```yaml docker-compose.shared.yml
+services:
+  comfyui:
+    image: comfyui:latest
+    volumes:
+      - /mnt/shared-models:/shared/models:ro
+      - ./extra_model_paths.yaml:/app/extra_model_paths.yaml:ro
+      - comfyui-output:/app/output
+    command: >
+      python3 main.py
+      --listen 0.0.0.0
+      --extra-model-paths-config /app/extra_model_paths.yaml
+```
+
+## Environment Variables
+
+Configure ComfyUI behavior through environment variables:
+
+```yaml docker-compose.env.yml
+services:
+  comfyui:
+    image: comfyui:latest
+    environment:
+      # PyTorch settings
+      - PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+      - CUDA_VISIBLE_DEVICES=0
+      
+      # Privacy
+      - HF_HUB_DISABLE_TELEMETRY=1
+      - DO_NOT_TRACK=1
+      
+      # Performance
+      - TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1
+      - PYTORCH_TUNABLEOP_ENABLED=1
+      
+      # Memory
+      - CUBLAS_WORKSPACE_CONFIG=:4096:8
+```
+
+## Health Checks
+
+Add health checks to ensure ComfyUI is running:
+
+```yaml docker-compose.health.yml
+services:
+  comfyui:
+    image: comfyui:latest
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8188"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+```
+
+## Reverse Proxy Setup
+
+### Nginx
+
+```nginx nginx.conf
+server {
+    listen 80;
+    server_name comfyui.example.com;
+    
+    # Redirect to HTTPS
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name comfyui.example.com;
+    
+    ssl_certificate /etc/nginx/ssl/cert.pem;
+    ssl_certificate_key /etc/nginx/ssl/key.pem;
+    
+    client_max_body_size 500M;
+    
+    location / {
+        proxy_pass http://localhost:8188;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # WebSocket support
+        proxy_read_timeout 86400;
+    }
+}
+```
+
+### Traefik
+
+```yaml docker-compose.traefik.yml
+services:
+  traefik:
+    image: traefik:v2.10
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+  
+  comfyui:
+    image: comfyui:latest
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.comfyui.rule=Host(`comfyui.example.com`)"
+      - "traefik.http.routers.comfyui.entrypoints=websecure"
+      - "traefik.http.routers.comfyui.tls=true"
+      - "traefik.http.services.comfyui.loadbalancer.server.port=8188"
+```
+
+## Production Best Practices
+
+<AccordionGroup>
+  <Accordion title="Resource Limits">
+    Set resource limits to prevent container from consuming all system resources:
+    
+    ```yaml
+    services:
+      comfyui:
+        deploy:
+          resources:
+            limits:
+              cpus: '4'
+              memory: 16G
+            reservations:
+              memory: 8G
+    ```
+  </Accordion>
+  
+  <Accordion title="Restart Policies">
+    Configure automatic restart on failure:
+    
+    ```yaml
+    services:
+      comfyui:
+        restart: unless-stopped
+    ```
+  </Accordion>
+  
+  <Accordion title="Logging">
+    Configure logging drivers to prevent disk space issues:
+    
+    ```yaml
+    services:
+      comfyui:
+        logging:
+          driver: "json-file"
+          options:
+            max-size: "10m"
+            max-file: "3"
+    ```
+  </Accordion>
+  
+  <Accordion title="Security">
+    Run as non-root user:
+    
+    ```dockerfile
+    RUN useradd -m -u 1000 comfyui
+    USER comfyui
+    ```
+    
+    ```yaml
+    services:
+      comfyui:
+        user: "1000:1000"
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Scaling with Docker Swarm
+
+```yaml docker-stack.yml
+version: '3.8'
+
+services:
+  comfyui:
+    image: comfyui:latest
+    deploy:
+      replicas: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+      restart_policy:
+        condition: on-failure
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    ports:
+      - "8188:8188"
+    volumes:
+      - comfyui-models:/app/models:ro
+      - comfyui-output:/app/output
+
+volumes:
+  comfyui-models:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: addr=nfs.example.com,rw
+      device: ":/shared/models"
+  comfyui-output:
+    driver: local
+```
+
+```bash
+# Deploy the stack
+docker stack deploy -c docker-stack.yml comfyui
+
+# Scale the service
+docker service scale comfyui_comfyui=5
+```
+
+## Kubernetes Deployment
+
+For large-scale deployments, use Kubernetes:
+
+```yaml comfyui-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: comfyui
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: comfyui
+  template:
+    metadata:
+      labels:
+        app: comfyui
+    spec:
+      containers:
+      - name: comfyui
+        image: comfyui:latest
+        ports:
+        - containerPort: 8188
+        resources:
+          limits:
+            nvidia.com/gpu: 1
+            memory: 16Gi
+          requests:
+            memory: 8Gi
+        volumeMounts:
+        - name: models
+          mountPath: /app/models
+          readOnly: true
+        - name: output
+          mountPath: /app/output
+      volumes:
+      - name: models
+        persistentVolumeClaim:
+          claimName: comfyui-models-pvc
+      - name: output
+        persistentVolumeClaim:
+          claimName: comfyui-output-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: comfyui
+spec:
+  selector:
+    app: comfyui
+  ports:
+  - protocol: TCP
+    port: 8188
+    targetPort: 8188
+  type: LoadBalancer
+```
+
+## Troubleshooting
+
+<CardGroup cols={2}>
+  <Card title="GPU Not Detected" icon="microchip">
+    ```bash
+    # Verify NVIDIA runtime
+    docker run --rm --gpus all nvidia/cuda:13.0-base nvidia-smi
+    
+    # Check container toolkit
+    nvidia-ctk --version
+    ```
+  </Card>
+  
+  <Card title="Permission Issues" icon="lock">
+    ```bash
+    # Fix volume permissions
+    sudo chown -R 1000:1000 models output input
+    
+    # Or run as current user
+    docker run --user $(id -u):$(id -g) ...
+    ```
+  </Card>
+  
+  <Card title="Out of Memory" icon="memory">
+    ```yaml
+    # Increase shared memory
+    services:
+      comfyui:
+        shm_size: '2gb'
+    ```
+  </Card>
+  
+  <Card title="Slow Performance" icon="gauge">
+    ```bash
+    # Use host network (less isolation)
+    docker run --network host ...
+    
+    # Or enable highvram mode
+    command: ["python3", "main.py", "--highvram"]
+    ```
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Python Integration" icon="python" href="/guides/python-integration">
+    Integrate ComfyUI into your applications
+  </Card>
+  
+  <Card title="Headless Mode" icon="server" href="/guides/headless-mode">
+    Configure CLI options for production
+  </Card>
+</CardGroup>

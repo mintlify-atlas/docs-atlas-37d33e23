@@ -1,0 +1,246 @@
+---
+title: Loader Nodes
+description: Load checkpoints, LoRAs, VAEs, and other models
+---
+
+Loader nodes load models and resources that are used throughout your workflow. These nodes typically run once at the beginning of a workflow.
+
+## Checkpoint Loaders
+
+### CheckpointLoaderSimple
+
+Loads a diffusion model checkpoint. Checkpoints contain the MODEL, CLIP, and VAE needed for image generation.
+
+**Category**: `loaders`
+
+<ParamField path="ckpt_name" type="string" required>
+  The name of the checkpoint (model) to load from the checkpoints directory
+</ParamField>
+
+**Returns**:
+- `MODEL`: The diffusion model used for denoising latents
+- `CLIP`: The CLIP model used for encoding text prompts
+- `VAE`: The VAE model for encoding/decoding images to/from latent space
+
+**Description**: Loads a diffusion model checkpoint. Diffusion models are used to denoise latents. The checkpoint is automatically detected and configured.
+
+### unCLIPCheckpointLoader
+
+Loads an unCLIP model checkpoint, which includes CLIP Vision support.
+
+**Category**: `loaders`
+
+<ParamField path="ckpt_name" type="string" required>
+  The checkpoint file to load
+</ParamField>
+
+**Returns**:
+- `MODEL`: The diffusion model
+- `CLIP`: The CLIP text encoder
+- `VAE`: The VAE model
+- `CLIP_VISION`: The CLIP vision model for image conditioning
+
+## LoRA Loaders
+
+### LoraLoader
+
+Applies a LoRA (Low-Rank Adaptation) to modify the model and CLIP behavior.
+
+**Category**: `loaders`
+
+<ParamField path="model" type="MODEL" required>
+  The diffusion model the LoRA will be applied to
+</ParamField>
+
+<ParamField path="clip" type="CLIP" required>
+  The CLIP model the LoRA will be applied to
+</ParamField>
+
+<ParamField path="lora_name" type="string" required>
+  The name of the LoRA file to load
+</ParamField>
+
+<ParamField path="strength_model" type="float" default="1.0">
+  How strongly to modify the diffusion model. Range: -100.0 to 100.0. Can be negative.
+</ParamField>
+
+<ParamField path="strength_clip" type="float" default="1.0">
+  How strongly to modify the CLIP model. Range: -100.0 to 100.0. Can be negative.
+</ParamField>
+
+**Returns**:
+- `MODEL`: The modified diffusion model
+- `CLIP`: The modified CLIP model
+
+**Description**: LoRAs are used to modify diffusion and CLIP models, altering the way latents are denoised. This is commonly used for applying styles. Multiple LoRA nodes can be chained together.
+
+### LoraLoaderModelOnly
+
+Applies a LoRA only to the model, not CLIP.
+
+**Category**: `loaders`
+
+<ParamField path="model" type="MODEL" required>
+  The diffusion model to apply the LoRA to
+</ParamField>
+
+<ParamField path="lora_name" type="string" required>
+  The name of the LoRA file
+</ParamField>
+
+<ParamField path="strength_model" type="float" default="1.0">
+  LoRA strength. Range: -100.0 to 100.0
+</ParamField>
+
+**Returns**:
+- `MODEL`: The modified diffusion model
+
+## VAE Loaders
+
+### VAELoader
+
+Loads a VAE model separately from a checkpoint.
+
+**Category**: `loaders`
+
+<ParamField path="vae_name" type="string" required>
+  The VAE file to load. Options include standard VAEs and approximate VAEs (TAESD variants)
+</ParamField>
+
+**Returns**:
+- `VAE`: The loaded VAE model
+
+**Available VAE Types**:
+- Standard VAE models (`.safetensors`, `.pt` files)
+- `taesd`: Tiny AutoEncoder for SD 1.x (fast preview)
+- `taesdxl`: Tiny AutoEncoder for SDXL (fast preview)
+- `taesd3`: Tiny AutoEncoder for SD3 (fast preview)
+- `taef1`: Tiny AutoEncoder for Flux.1 (fast preview)
+- Video VAEs: `taehv`, `lighttaew2_2`, `lighttaew2_1`, etc.
+- `pixel_space`: Bypass VAE encoding/decoding entirely
+
+## CLIP Loaders
+
+### CLIPLoader
+
+Loads a CLIP text encoder model separately.
+
+**Category**: `advanced/loaders`
+
+<ParamField path="clip_name" type="string" required>
+  The CLIP model file to load from the text_encoders directory
+</ParamField>
+
+<ParamField path="type" type="string" required>
+  The CLIP architecture type. Options: `stable_diffusion`, `stable_cascade`, `sd3`, `stable_audio`, `mochi`, `ltxv`, `pixart`, `cosmos`, etc.
+</ParamField>
+
+<ParamField path="device" type="string" default="default">
+  Device to load on. Options: `default`, `cpu`
+</ParamField>
+
+**Returns**:
+- `CLIP`: The loaded CLIP model
+
+### DualCLIPLoader
+
+Loads two CLIP models for architectures that use dual text encoders.
+
+**Category**: `advanced/loaders`
+
+<ParamField path="clip_name1" type="string" required>
+  First CLIP model file
+</ParamField>
+
+<ParamField path="clip_name2" type="string" required>
+  Second CLIP model file
+</ParamField>
+
+<ParamField path="type" type="string" required>
+  Dual CLIP type. Options: `sdxl`, `sd3`, `flux`, `hunyuan_video`, `hidream`, etc.
+</ParamField>
+
+<ParamField path="device" type="string" default="default">
+  Device to load on
+</ParamField>
+
+**Returns**:
+- `CLIP`: The combined dual CLIP model
+
+**Common Recipes**:
+- SDXL: `clip-l` + `clip-g`
+- SD3: `clip-l` + `clip-g` or `clip-l` + `t5` or `clip-g` + `t5`
+- Flux: `clip-l` + `t5`
+
+## Advanced Loaders
+
+### UNETLoader
+
+Loads a diffusion model (UNET) separately.
+
+**Category**: `advanced/loaders`
+
+<ParamField path="unet_name" type="string" required>
+  The UNET model file to load
+</ParamField>
+
+<ParamField path="weight_dtype" type="string" default="default">
+  Weight precision. Options: `default`, `fp8_e4m3fn`, `fp8_e4m3fn_fast`, `fp8_e5m2`
+</ParamField>
+
+**Returns**:
+- `MODEL`: The loaded diffusion model
+
+### ControlNetLoader
+
+Loads a ControlNet model for guided image generation.
+
+**Category**: `loaders`
+
+<ParamField path="control_net_name" type="string" required>
+  The ControlNet model file to load
+</ParamField>
+
+**Returns**:
+- `CONTROL_NET`: The loaded ControlNet model
+
+### CLIPVisionLoader
+
+Loads a CLIP Vision model for image conditioning.
+
+**Category**: `loaders`
+
+<ParamField path="clip_name" type="string" required>
+  The CLIP Vision model file to load
+</ParamField>
+
+**Returns**:
+- `CLIP_VISION`: The loaded CLIP Vision model
+
+## Model-Specific Loaders
+
+### StyleModelLoader
+
+Loads a style model for style transfer.
+
+**Category**: `loaders`
+
+<ParamField path="style_model_name" type="string" required>
+  The style model file to load
+</ParamField>
+
+**Returns**:
+- `STYLE_MODEL`: The loaded style model
+
+### UpscaleModelLoader
+
+Loads an upscale model for image super-resolution.
+
+**Category**: `loaders`
+
+<ParamField path="model_name" type="string" required>
+  The upscale model file to load from the upscale_models directory
+</ParamField>
+
+**Returns**:
+- `UPSCALE_MODEL`: The loaded upscale model

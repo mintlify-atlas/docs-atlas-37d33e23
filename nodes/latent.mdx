@@ -1,0 +1,519 @@
+---
+title: Latent Space Operations
+description: Nodes for manipulating images in latent space
+---
+
+Latent space nodes work with compressed image representations before they're decoded to pixels. Operations in latent space are faster and more memory-efficient than pixel-space operations.
+
+## Latent Creation
+
+### EmptyLatentImage
+
+Creates a new batch of empty latent images to be denoised.
+
+**Category**: `latent`
+
+<ParamField path="width" type="int" default="512">
+  Width of the latent in pixels (will be divided by 8 for actual latent dimensions). Range: 16 to 16384, step 8
+</ParamField>
+
+<ParamField path="height" type="int" default="512">
+  Height of the latent in pixels. Range: 16 to 16384, step 8
+</ParamField>
+
+<ParamField path="batch_size" type="int" default="1">
+  Number of latent images in the batch. Range: 1 to 4096
+</ParamField>
+
+**Returns**:
+- `LATENT`: Empty latent image batch
+
+**Description**: Creates blank latent tensors for text-to-image generation. The actual latent dimensions are width/8 × height/8 because latents are 8x compressed.
+
+## Encoding & Decoding
+
+### VAEEncode
+
+Converts a pixel-space image to latent space.
+
+**Category**: `latent`
+
+<ParamField path="pixels" type="IMAGE" required>
+  The image to encode
+</ParamField>
+
+<ParamField path="vae" type="VAE" required>
+  The VAE model for encoding
+</ParamField>
+
+**Returns**:
+- `LATENT`: The encoded latent representation
+
+**Description**: Compresses an image into latent space. Used for img2img workflows or when you need to manipulate an image in latent space.
+
+### VAEDecode
+
+Converts a latent image back to pixel space.
+
+**Category**: `latent`
+
+<ParamField path="samples" type="LATENT" required>
+  The latent to decode
+</ParamField>
+
+<ParamField path="vae" type="VAE" required>
+  The VAE model for decoding
+</ParamField>
+
+**Returns**:
+- `IMAGE`: The decoded pixel-space image
+
+**Description**: Decodes latent images back into pixel space. This is typically the final step before saving an image.
+
+### VAEEncodeTiled
+
+Encodes large images using a tiled approach to save memory.
+
+**Category**: `_for_testing`
+
+<ParamField path="pixels" type="IMAGE" required>
+  The image to encode
+</ParamField>
+
+<ParamField path="vae" type="VAE" required>
+  The VAE model
+</ParamField>
+
+<ParamField path="tile_size" type="int" default="512">
+  Size of each tile. Range: 64 to 4096, step 64
+</ParamField>
+
+<ParamField path="overlap" type="int" default="64">
+  Overlap between tiles to avoid seams. Range: 0 to 4096, step 32
+</ParamField>
+
+<ParamField path="temporal_size" type="int" default="64">
+  Frames to encode at once (for video VAEs). Range: 8 to 4096, step 4
+</ParamField>
+
+<ParamField path="temporal_overlap" type="int" default="8">
+  Frame overlap (for video VAEs). Range: 4 to 4096, step 4
+</ParamField>
+
+**Returns**:
+- `LATENT`: The encoded latent
+
+### VAEDecodeTiled
+
+Decodes large latents using tiles to save memory.
+
+**Category**: `_for_testing`
+
+<ParamField path="samples" type="LATENT" required>
+  The latent to decode
+</ParamField>
+
+<ParamField path="vae" type="VAE" required>
+  The VAE model
+</ParamField>
+
+<ParamField path="tile_size" type="int" default="512">
+  Tile size in pixels. Range: 64 to 4096, step 32
+</ParamField>
+
+<ParamField path="overlap" type="int" default="64">
+  Overlap between tiles. Range: 0 to 4096, step 32
+</ParamField>
+
+<ParamField path="temporal_size" type="int" default="64">
+  Frames per tile (video VAEs)
+</ParamField>
+
+<ParamField path="temporal_overlap" type="int" default="8">
+  Frame overlap (video VAEs)
+</ParamField>
+
+**Returns**:
+- `IMAGE`: The decoded image
+
+### VAEEncodeForInpaint
+
+Encodes an image with a mask for inpainting.
+
+**Category**: `latent/inpaint`
+
+<ParamField path="pixels" type="IMAGE" required>
+  The image to encode
+</ParamField>
+
+<ParamField path="vae" type="VAE" required>
+  The VAE model
+</ParamField>
+
+<ParamField path="mask" type="MASK" required>
+  The inpainting mask
+</ParamField>
+
+<ParamField path="grow_mask_by" type="int" default="6">
+  Pixels to expand the mask by for seamless blending. Range: 0 to 64
+</ParamField>
+
+**Returns**:
+- `LATENT`: Encoded latent with noise mask
+
+## Latent Transformations
+
+### LatentUpscale
+
+Upscales a latent image to a specific size.
+
+**Category**: `latent`
+
+<ParamField path="samples" type="LATENT" required>
+  The latent to upscale
+</ParamField>
+
+<ParamField path="upscale_method" type="string" required>
+  Interpolation method. Options: `nearest-exact`, `bilinear`, `area`, `bicubic`, `bislerp`
+</ParamField>
+
+<ParamField path="width" type="int" default="512">
+  Target width in pixels. Range: 0 to 16384, step 8
+</ParamField>
+
+<ParamField path="height" type="int" default="512">
+  Target height in pixels. Range: 0 to 16384, step 8
+</ParamField>
+
+<ParamField path="crop" type="string" required>
+  Crop method. Options: `disabled`, `center`
+</ParamField>
+
+**Returns**:
+- `LATENT`: Upscaled latent
+
+**Description**: Upscales in latent space before decoding. More efficient than upscaling pixels. Use with KSampler at low denoise (0.4-0.6) for best results.
+
+### LatentUpscaleBy
+
+Upscales a latent by a scale factor.
+
+**Category**: `latent`
+
+<ParamField path="samples" type="LATENT" required>
+  The latent to upscale
+</ParamField>
+
+<ParamField path="upscale_method" type="string" required>
+  Interpolation method
+</ParamField>
+
+<ParamField path="scale_by" type="float" default="1.5">
+  Scale multiplier. Range: 0.01 to 8.0
+</ParamField>
+
+**Returns**:
+- `LATENT`: Upscaled latent
+
+### LatentRotate
+
+Rotates a latent image in 90-degree increments.
+
+**Category**: `latent/transform`
+
+<ParamField path="samples" type="LATENT" required>
+  The latent to rotate
+</ParamField>
+
+<ParamField path="rotation" type="string" required>
+  Rotation amount. Options: `none`, `90 degrees`, `180 degrees`, `270 degrees`
+</ParamField>
+
+**Returns**:
+- `LATENT`: Rotated latent
+
+### LatentFlip
+
+Flips a latent image horizontally or vertically.
+
+**Category**: `latent/transform`
+
+<ParamField path="samples" type="LATENT" required>
+  The latent to flip
+</ParamField>
+
+<ParamField path="flip_method" type="string" required>
+  Flip direction. Options: `x-axis: vertically`, `y-axis: horizontally`
+</ParamField>
+
+**Returns**:
+- `LATENT`: Flipped latent
+
+### LatentCrop
+
+Crops a latent image to a specific region.
+
+**Category**: `latent/transform`
+
+<ParamField path="samples" type="LATENT" required>
+  The latent to crop
+</ParamField>
+
+<ParamField path="width" type="int" default="512">
+  Crop width. Range: 64 to 16384, step 8
+</ParamField>
+
+<ParamField path="height" type="int" default="512">
+  Crop height. Range: 64 to 16384, step 8
+</ParamField>
+
+<ParamField path="x" type="int" default="0">
+  X offset. Range: 0 to 16384, step 8
+</ParamField>
+
+<ParamField path="y" type="int" default="0">
+  Y offset. Range: 0 to 16384, step 8
+</ParamField>
+
+**Returns**:
+- `LATENT`: Cropped latent
+
+## Latent Composition
+
+### LatentComposite
+
+Composites one latent onto another.
+
+**Category**: `latent`
+
+<ParamField path="samples_to" type="LATENT" required>
+  The destination latent (background)
+</ParamField>
+
+<ParamField path="samples_from" type="LATENT" required>
+  The source latent to composite
+</ParamField>
+
+<ParamField path="x" type="int" default="0">
+  X position. Range: 0 to 16384, step 8
+</ParamField>
+
+<ParamField path="y" type="int" default="0">
+  Y position. Range: 0 to 16384, step 8
+</ParamField>
+
+<ParamField path="feather" type="int" default="0">
+  Feathering amount for blending. Range: 0 to 16384, step 8
+</ParamField>
+
+**Returns**:
+- `LATENT`: Composited latent
+
+**Description**: Pastes one latent onto another at a specific position. Feathering creates smooth transitions at edges.
+
+### LatentBlend
+
+Blends two latents together.
+
+**Category**: `_for_testing`
+
+<ParamField path="samples1" type="LATENT" required>
+  First latent
+</ParamField>
+
+<ParamField path="samples2" type="LATENT" required>
+  Second latent
+</ParamField>
+
+<ParamField path="blend_factor" type="float" default="0.5">
+  Blend amount. 0.0 = only samples1, 1.0 = only samples2. Range: 0.0 to 1.0
+</ParamField>
+
+**Returns**:
+- `LATENT`: Blended latent
+
+## Latent Batch Operations
+
+### LatentFromBatch
+
+Extracts a subset from a latent batch.
+
+**Category**: `latent/batch`
+
+<ParamField path="samples" type="LATENT" required>
+  The batch to extract from
+</ParamField>
+
+<ParamField path="batch_index" type="int" default="0">
+  Starting index. Range: 0 to 63
+</ParamField>
+
+<ParamField path="length" type="int" default="1">
+  Number of items to extract. Range: 1 to 64
+</ParamField>
+
+**Returns**:
+- `LATENT`: Extracted latent subset
+
+### RepeatLatentBatch
+
+Duplicates a latent batch.
+
+**Category**: `latent/batch`
+
+<ParamField path="samples" type="LATENT" required>
+  The latent to repeat
+</ParamField>
+
+<ParamField path="amount" type="int" default="1">
+  Number of times to repeat. Range: 1 to 64
+</ParamField>
+
+**Returns**:
+- `LATENT`: Repeated latent batch
+
+## Advanced Latent Operations
+
+### LatentAdd
+
+Adds two latents together.
+
+**Category**: `latent/advanced`
+
+<ParamField path="samples1" type="LATENT" required>
+  First latent
+</ParamField>
+
+<ParamField path="samples2" type="LATENT" required>
+  Second latent
+</ParamField>
+
+**Returns**:
+- `LATENT`: Sum of the two latents
+
+### LatentSubtract
+
+Subtracts one latent from another.
+
+**Category**: `latent/advanced`
+
+<ParamField path="samples1" type="LATENT" required>
+  Latent to subtract from
+</ParamField>
+
+<ParamField path="samples2" type="LATENT" required>
+  Latent to subtract
+</ParamField>
+
+**Returns**:
+- `LATENT`: Difference between latents
+
+### LatentMultiply
+
+Multiplies a latent by a scalar value.
+
+**Category**: `latent/advanced`
+
+<ParamField path="samples" type="LATENT" required>
+  The latent to multiply
+</ParamField>
+
+<ParamField path="multiplier" type="float" default="1.0">
+  Scale factor. Range: -10.0 to 10.0
+</ParamField>
+
+**Returns**:
+- `LATENT`: Scaled latent
+
+### LatentInterpolate
+
+Interpolates between two latents.
+
+**Category**: `latent/advanced`
+
+<ParamField path="samples1" type="LATENT" required>
+  First latent
+</ParamField>
+
+<ParamField path="samples2" type="LATENT" required>
+  Second latent
+</ParamField>
+
+<ParamField path="ratio" type="float" default="1.0">
+  Interpolation ratio. Range: 0.0 to 1.0
+</ParamField>
+
+**Returns**:
+- `LATENT`: Interpolated latent
+
+**Description**: Creates a smooth blend between two latents using spherical interpolation.
+
+## Inpainting
+
+### SetLatentNoiseMask
+
+Adds a noise mask to a latent for inpainting.
+
+**Category**: `latent/inpaint`
+
+<ParamField path="samples" type="LATENT" required>
+  The latent to add mask to
+</ParamField>
+
+<ParamField path="mask" type="MASK" required>
+  The noise mask
+</ParamField>
+
+**Returns**:
+- `LATENT`: Latent with noise mask
+
+**Description**: The noise mask tells the sampler which areas to denoise. White areas are regenerated, black areas are preserved.
+
+## Latent Storage
+
+### SaveLatent
+
+Saves a latent to disk.
+
+**Category**: `_for_testing`
+
+<ParamField path="samples" type="LATENT" required>
+  The latent to save
+</ParamField>
+
+<ParamField path="filename_prefix" type="string" default="latents/ComfyUI">
+  Filename prefix for saved latent
+</ParamField>
+
+**Description**: Saves latents as `.latent` files that can be loaded later.
+
+### LoadLatent
+
+Loads a previously saved latent from disk.
+
+**Category**: `_for_testing`
+
+<ParamField path="latent" type="string" required>
+  The latent file to load
+</ParamField>
+
+**Returns**:
+- `LATENT`: The loaded latent
+
+## Workflow Tips
+
+### Latent Upscaling Workflow
+
+1. Generate base image at 512×512
+2. Use `LatentUpscale` or `LatentUpscaleBy` to upscale latent to 1024×1024
+3. Use `KSampler` with `denoise=0.4-0.6` to add high-frequency details
+4. Decode with `VAEDecode`
+
+This is faster and uses less VRAM than generating at high resolution directly.
+
+### Latent Space Benefits
+
+- **8x compression**: A 512×512 pixel image is 64×64 in latent space
+- **Faster operations**: Transforms are 64x faster than in pixel space
+- **Lower memory**: Operations use significantly less VRAM
+- **Native space**: Diffusion models work directly in latent space

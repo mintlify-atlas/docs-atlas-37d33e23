@@ -1,0 +1,579 @@
+---
+title: Models
+description: Model loading, management, and usage in ComfyUI including checkpoints, VAE, CLIP, and LoRAs
+---
+
+## Overview
+
+ComfyUI supports various model types for image generation, each serving a specific purpose in the pipeline. The model system handles loading, caching, memory management, and multi-model workflows.
+
+## Model Types
+
+### Diffusion Models
+
+The core model for denoising latents:
+
+```python
+class CheckpointLoaderSimple:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "ckpt_name": (folder_paths.get_filename_list("checkpoints"), {
+                    "tooltip": "The name of the checkpoint (model) to load."
+                })
+            }
+        }
+    
+    RETURN_TYPES = ("MODEL", "CLIP", "VAE")
+    FUNCTION = "load_checkpoint"
+    CATEGORY = "loaders"
+    
+    def load_checkpoint(self, ckpt_name):
+        ckpt_path = folder_paths.get_full_path_or_raise("checkpoints", ckpt_name)
+        out = comfy.sd.load_checkpoint_guess_config(
+            ckpt_path, 
+            output_vae=True, 
+            output_clip=True, 
+            embedding_directory=folder_paths.get_folder_paths("embeddings")
+        )
+        return out[:3]
+```
+
+<Info>
+**Auto-detection**: `load_checkpoint_guess_config` automatically detects the model architecture (SD 1.5, SDXL, SD3, Flux, etc.) from the checkpoint file.
+</Info>
+
+### VAE (Variational Autoencoder)
+
+Encodes images to latent space and decodes latents back to images:
+
+```python
+class VAELoader:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": {"vae_name": (s.vae_list(s), )}}
+    
+    RETURN_TYPES = ("VAE",)
+    FUNCTION = "load_vae"
+    CATEGORY = "loaders"
+    
+    def load_vae(self, vae_name):
+        if vae_name == "pixel_space":
+            # Special case: no encoding/decoding
+            sd = {"pixel_space_vae": torch.tensor(1.0)}
+        elif vae_name in self.image_taes:
+            # Tiny AutoEncoder for fast preview
+            sd = self.load_taesd(vae_name)
+        else:
+            vae_path = folder_paths.get_full_path_or_raise("vae", vae_name)
+            sd, metadata = comfy.utils.load_torch_file(
+                vae_path, return_metadata=True
+            )
+        
+        vae = comfy.sd.VAE(sd=sd, metadata=metadata)
+        vae.throw_exception_if_invalid()
+        return (vae,)
+```
+
+#### TAESD (Tiny AutoEncoder)
+
+Lightweight VAE alternatives for fast preview:
+
+```python
+@staticmethod
+def load_taesd(name):
+    sd = {}
+    encoder = f"{name}_encoder.safetensors"
+    decoder = f"{name}_decoder.safetensors"
+    
+    enc = comfy.utils.load_torch_file(
+        folder_paths.get_full_path_or_raise("vae_approx", encoder)
+    )
+    for k in enc:
+        sd[f"taesd_encoder.{k}"] = enc[k]
+    
+    dec = comfy.utils.load_torch_file(
+        folder_paths.get_full_path_or_raise("vae_approx", decoder)
+    )
+    for k in dec:
+        sd[f"taesd_decoder.{k}"] = dec[k]
+    
+    # Set scale and shift based on model type
+    if name == "taesd":
+        sd["vae_scale"] = torch.tensor(0.18215)
+        sd["vae_shift"] = torch.tensor(0.0)
+    elif name == "taesdxl":
+        sd["vae_scale"] = torch.tensor(0.13025)
+        sd["vae_shift"] = torch.tensor(0.0)
+    
+    return sd
+```
+
+### CLIP (Text Encoder)
+
+Encodes text prompts into conditioning:
+
+```python
+class CLIPLoader:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "clip_name": (folder_paths.get_filename_list("text_encoders"),),
+                "type": (["stable_diffusion", "stable_cascade", "sd3", 
+                         "stable_audio", "flux"], )
+            }
+        }
+    
+    RETURN_TYPES = ("CLIP",)
+    FUNCTION = "load_clip"
+    CATEGORY = "advanced/loaders"
+    
+    def load_clip(self, clip_name, type="stable_diffusion"):
+        clip_type = getattr(comfy.sd.CLIPType, 
+                          type.upper(), 
+                          comfy.sd.CLIPType.STABLE_DIFFUSION)
+        
+        clip_path = folder_paths.get_full_path_or_raise(
+            "text_encoders", clip_name
+        )
+        clip = comfy.sd.load_clip(
+            ckpt_paths=[clip_path], 
+            embedding_directory=folder_paths.get_folder_paths("embeddings"),
+            clip_type=clip_type
+        )
+        return (clip,)
+```
+
+#### Dual CLIP Models
+
+Some models require two CLIP encoders:
+
+```python
+class DualCLIPLoader:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "clip_name1": (folder_paths.get_filename_list("text_encoders"),),
+                "clip_name2": (folder_paths.get_filename_list("text_encoders"),),
+                "type": (["sdxl", "sd3", "flux"], )
+            }
+        }
+    
+    RETURN_TYPES = ("CLIP",)
+    FUNCTION = "load_clip"
+    
+    def load_clip(self, clip_name1, clip_name2, type):
+        clip_path1 = folder_paths.get_full_path_or_raise(
+            "text_encoders", clip_name1
+        )
+        clip_path2 = folder_paths.get_full_path_or_raise(
+            "text_encoders", clip_name2
+        )
+        
+        clip = comfy.sd.load_clip(
+            ckpt_paths=[clip_path1, clip_path2],
+            clip_type=getattr(comfy.sd.CLIPType, type.upper())
+        )
+        return (clip,)
+```
+
+<Note>
+**SDXL**: Requires CLIP-L and CLIP-G  
+**SD3**: Supports CLIP-L + CLIP-G or CLIP-L + T5 or CLIP-G + T5  
+**Flux**: Requires CLIP-L and T5
+</Note>
+
+## Model Paths
+
+From `folder_paths.py:22-53`, ComfyUI organizes models in standard directories:
+
+```python
+models_dir = os.path.join(base_path, "models")
+
+folder_names_and_paths = {
+    "checkpoints": ([os.path.join(models_dir, "checkpoints")], 
+                    supported_pt_extensions),
+    "vae": ([os.path.join(models_dir, "vae")], 
+            supported_pt_extensions),
+    "loras": ([os.path.join(models_dir, "loras")], 
+              supported_pt_extensions),
+    "text_encoders": ([os.path.join(models_dir, "text_encoders"),
+                       os.path.join(models_dir, "clip")], 
+                      supported_pt_extensions),
+    "diffusion_models": ([os.path.join(models_dir, "unet"),
+                          os.path.join(models_dir, "diffusion_models")],
+                         supported_pt_extensions),
+    "controlnet": ([os.path.join(models_dir, "controlnet"),
+                    os.path.join(models_dir, "t2i_adapter")],
+                   supported_pt_extensions),
+    "embeddings": ([os.path.join(models_dir, "embeddings")],
+                   supported_pt_extensions),
+    "upscale_models": ([os.path.join(models_dir, "upscale_models")],
+                       supported_pt_extensions),
+}
+```
+
+### Supported File Extensions
+
+```python
+supported_pt_extensions = {
+    '.ckpt', '.pt', '.pt2', '.bin', 
+    '.pth', '.safetensors', '.pkl', '.sft'
+}
+```
+
+<Warning>
+**SafeTensors Recommended**: Use `.safetensors` format for security and reliability. Pickle-based formats (`.ckpt`, `.pt`, `.pkl`) can execute arbitrary code.
+</Warning>
+
+## LoRA Models
+
+Low-Rank Adaptation models modify base models:
+
+```python
+class LoraLoader:
+    def __init__(self):
+        self.loaded_lora = None
+    
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "model": ("MODEL", {
+                    "tooltip": "The diffusion model to apply LoRA to"
+                }),
+                "clip": ("CLIP", {
+                    "tooltip": "The CLIP model to apply LoRA to"
+                }),
+                "lora_name": (folder_paths.get_filename_list("loras"),),
+                "strength_model": ("FLOAT", {
+                    "default": 1.0, "min": -100.0, "max": 100.0, "step": 0.01
+                }),
+                "strength_clip": ("FLOAT", {
+                    "default": 1.0, "min": -100.0, "max": 100.0, "step": 0.01
+                })
+            }
+        }
+    
+    RETURN_TYPES = ("MODEL", "CLIP")
+    FUNCTION = "load_lora"
+    CATEGORY = "loaders"
+    
+    def load_lora(self, model, clip, lora_name, strength_model, strength_clip):
+        if strength_model == 0 and strength_clip == 0:
+            return (model, clip)
+        
+        lora_path = folder_paths.get_full_path_or_raise("loras", lora_name)
+        
+        # Cache loaded LoRA
+        if self.loaded_lora is not None:
+            if self.loaded_lora[0] == lora_path:
+                lora = self.loaded_lora[1]
+            else:
+                self.loaded_lora = None
+        
+        if lora is None:
+            lora = comfy.utils.load_torch_file(lora_path, safe_load=True)
+            self.loaded_lora = (lora_path, lora)
+        
+        model_lora, clip_lora = comfy.sd.load_lora_for_models(
+            model, clip, lora, strength_model, strength_clip
+        )
+        return (model_lora, clip_lora)
+```
+
+<Tip>
+**LoRA Chaining**: Multiple LoRA loaders can be chained together to apply multiple adaptations. Each LoRA modifies the model passed to it.
+</Tip>
+
+## Model File Discovery
+
+From `folder_paths.py:303-343`, ComfyUI recursively scans model directories:
+
+```python
+def recursive_search(directory: str, excluded_dir_names=None):
+    if not os.path.isdir(directory):
+        return [], {}
+    
+    result = []
+    dirs = {}
+    
+    for dirpath, subdirs, filenames in os.walk(directory, followlinks=True):
+        # Exclude .git and other special directories
+        subdirs[:] = [d for d in subdirs if d not in excluded_dir_names]
+        
+        for file_name in filenames:
+            relative_path = os.path.relpath(
+                os.path.join(dirpath, file_name), 
+                directory
+            )
+            result.append(relative_path)
+        
+        # Track directory modification times for cache invalidation
+        for d in subdirs:
+            path = os.path.join(dirpath, d)
+            dirs[path] = os.path.getmtime(path)
+    
+    return result, dirs
+
+def filter_files_extensions(files, extensions):
+    return sorted([
+        f for f in files 
+        if os.path.splitext(f)[-1].lower() in extensions or len(extensions) == 0
+    ])
+```
+
+### Model Caching
+
+```python
+filename_list_cache = {}  # Global cache
+
+def get_filename_list(folder_name: str) -> list[str]:
+    folder_name = map_legacy(folder_name)
+    out = cached_filename_list_(folder_name)
+    
+    if out is None:
+        # Cache miss - scan directory
+        out = get_filename_list_(folder_name)
+        filename_list_cache[folder_name] = out
+    
+    return list(out[0])
+
+def cached_filename_list_(folder_name: str):
+    if folder_name not in filename_list_cache:
+        return None
+    
+    out = filename_list_cache[folder_name]
+    
+    # Validate cache - check if directories changed
+    for folder, time_modified in out[1].items():
+        if os.path.getmtime(folder) != time_modified:
+            return None  # Cache invalidated
+    
+    return out
+```
+
+## ControlNet Models
+
+Guidance models for spatial control:
+
+```python
+class ControlNetLoader:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "control_net_name": (
+                    folder_paths.get_filename_list("controlnet"),
+                )
+            }
+        }
+    
+    RETURN_TYPES = ("CONTROL_NET",)
+    FUNCTION = "load_controlnet"
+    CATEGORY = "loaders"
+    
+    def load_controlnet(self, control_net_name):
+        controlnet_path = folder_paths.get_full_path_or_raise(
+            "controlnet", control_net_name
+        )
+        controlnet = comfy.controlnet.load_controlnet(controlnet_path)
+        
+        if controlnet is None:
+            raise RuntimeError(
+                "ERROR: controlnet file is invalid and does not "
+                "contain a valid controlnet model."
+            )
+        
+        return (controlnet,)
+```
+
+### Applying ControlNet
+
+```python
+class ControlNetApplyAdvanced:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "positive": ("CONDITIONING",),
+                "negative": ("CONDITIONING",),
+                "control_net": ("CONTROL_NET",),
+                "image": ("IMAGE",),
+                "strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0}),
+                "start_percent": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0}),
+                "end_percent": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0})
+            }
+        }
+    
+    RETURN_TYPES = ("CONDITIONING", "CONDITIONING")
+    RETURN_NAMES = ("positive", "negative")
+    FUNCTION = "apply_controlnet"
+    
+    def apply_controlnet(self, positive, negative, control_net, image, 
+                        strength, start_percent, end_percent):
+        if strength == 0:
+            return (positive, negative)
+        
+        control_hint = image.movedim(-1, 1)
+        cnets = {}
+        
+        out = []
+        for conditioning in [positive, negative]:
+            c = []
+            for t in conditioning:
+                d = t[1].copy()
+                
+                prev_cnet = d.get('control', None)
+                if prev_cnet in cnets:
+                    c_net = cnets[prev_cnet]
+                else:
+                    c_net = control_net.copy().set_cond_hint(
+                        control_hint, strength, 
+                        (start_percent, end_percent)
+                    )
+                    c_net.set_previous_controlnet(prev_cnet)
+                    cnets[prev_cnet] = c_net
+                
+                d['control'] = c_net
+                d['control_apply_to_uncond'] = False
+                c.append([t[0], d])
+            out.append(c)
+        
+        return (out[0], out[1])
+```
+
+## Model Configuration
+
+<CardGroup cols={2}>
+  <Card title="Model Paths" icon="folder-tree">
+    Configure custom model directories in `extra_model_paths.yaml`:
+    
+    ```yaml
+    comfyui:
+      checkpoints: /path/to/checkpoints
+      vae: /path/to/vae
+      loras: /path/to/loras
+    ```
+  </Card>
+  
+  <Card title="Memory Management" icon="memory">
+    Models are automatically loaded/unloaded based on VRAM:
+    
+    - `--lowvram`: Aggressive offloading
+    - `--normalvram`: Moderate offloading
+    - `--highvram`: Keep models in VRAM
+  </Card>
+  
+  <Card title="Model Precision" icon="sliders">
+    Control memory usage with precision:
+    
+    - `fp32`: Full precision
+    - `fp16`: Half precision
+    - `fp8_e4m3fn`: 8-bit float
+  </Card>
+  
+  <Card title="Safe Loading" icon="shield-check">
+    Use `safe_load=True` to prevent code execution in pickle files
+  </Card>
+</CardGroup>
+
+## Advanced Model Loading
+
+### UNET-Only Loading
+
+For separate component loading:
+
+```python
+class UNETLoader:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "unet_name": (folder_paths.get_filename_list("diffusion_models"),),
+                "weight_dtype": (["default", "fp8_e4m3fn", 
+                                 "fp8_e4m3fn_fast", "fp8_e5m2"],)
+            }
+        }
+    
+    RETURN_TYPES = ("MODEL",)
+    FUNCTION = "load_unet"
+    
+    def load_unet(self, unet_name, weight_dtype):
+        model_options = {}
+        if weight_dtype == "fp8_e4m3fn":
+            model_options["dtype"] = torch.float8_e4m3fn
+        elif weight_dtype == "fp8_e4m3fn_fast":
+            model_options["dtype"] = torch.float8_e4m3fn
+            model_options["fp8_optimizations"] = True
+        
+        unet_path = folder_paths.get_full_path_or_raise(
+            "diffusion_models", unet_name
+        )
+        model = comfy.sd.load_diffusion_model(
+            unet_path, model_options=model_options
+        )
+        return (model,)
+```
+
+### Model Validation
+
+```python
+class VAELoader:
+    def load_vae(self, vae_name):
+        # ... load vae ...
+        vae = comfy.sd.VAE(sd=sd, metadata=metadata)
+        vae.throw_exception_if_invalid()  # Validate before returning
+        return (vae,)
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Model Organization">
+    - Use subdirectories within model folders
+    - Name models descriptively
+    - Keep model versions separate
+    - Document custom model paths
+  </Accordion>
+
+  <Accordion title="Performance">
+    - Use fp16 or fp8 for large models
+    - Enable LoRA caching for repeated use
+    - Consider TAESD for preview workflows
+    - Batch similar operations together
+  </Accordion>
+
+  <Accordion title="Compatibility">
+    - Check model architecture compatibility
+    - Match VAE to checkpoint type
+    - Verify CLIP encoder requirements
+    - Test LoRA with base model
+  </Accordion>
+
+  <Accordion title="Security">
+    - Prefer SafeTensors format
+    - Use safe_load for pickle files
+    - Verify model sources
+    - Scan for malicious code
+  </Accordion>
+</AccordionGroup>
+
+## See Also
+
+<CardGroup cols={3}>
+  <Card title="Nodes" icon="circle-nodes" href="/concepts/nodes">
+    Using models in node workflows
+  </Card>
+  
+  <Card title="Execution" icon="play" href="/concepts/execution">
+    Model loading during execution
+  </Card>
+  
+  <Card title="Workflows" icon="diagram-project" href="/concepts/workflows">
+    Building workflows with models
+  </Card>
+</CardGroup>

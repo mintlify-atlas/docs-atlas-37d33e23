@@ -1,0 +1,748 @@
+---
+title: Command Line Arguments
+description: Complete reference for all ComfyUI command line arguments and flags
+---
+
+ComfyUI supports numerous command line arguments to customize server behavior, hardware configuration, memory management, and performance optimizations.
+
+## Running ComfyUI with Arguments
+
+Pass arguments when launching ComfyUI:
+
+```bash
+python main.py --listen 0.0.0.0 --port 8188 --preview-method auto
+```
+
+## Server Configuration
+
+<ParamField path="--listen" type="string" default="127.0.0.1">
+  Specify the IP address to listen on. Use `0.0.0.0` to listen on all IPv4 addresses, or provide a comma-separated list.
+  
+  ```bash
+  # Listen on localhost only (default)
+  python main.py --listen 127.0.0.1
+  
+  # Listen on all interfaces (IPv4 and IPv6)
+  python main.py --listen
+  
+  # Listen on specific IPs
+  python main.py --listen 127.0.0.1,192.168.1.100
+  ```
+  
+  <Note>
+  Using `--listen` without an argument defaults to `0.0.0.0,::` (all IPv4 and IPv6 addresses).
+  </Note>
+</ParamField>
+
+<ParamField path="--port" type="integer" default="8188">
+  Set the listen port for the web server.
+  
+  ```bash
+  python main.py --port 3000
+  ```
+</ParamField>
+
+<ParamField path="--tls-keyfile" type="string">
+  Path to TLS (SSL) key file. Enables HTTPS access. Requires `--tls-certfile`.
+  
+  ```bash
+  python main.py --tls-keyfile key.pem --tls-certfile cert.pem
+  ```
+</ParamField>
+
+<ParamField path="--tls-certfile" type="string">
+  Path to TLS (SSL) certificate file. Enables HTTPS access. Requires `--tls-keyfile`.
+</ParamField>
+
+<ParamField path="--enable-cors-header" type="string" default="*">
+  Enable CORS (Cross-Origin Resource Sharing) with optional origin.
+  
+  ```bash
+  # Allow all origins
+  python main.py --enable-cors-header
+  
+  # Allow specific origin
+  python main.py --enable-cors-header "https://example.com"
+  ```
+</ParamField>
+
+<ParamField path="--max-upload-size" type="float" default="100">
+  Set the maximum upload size in MB.
+  
+  ```bash
+  python main.py --max-upload-size 500
+  ```
+</ParamField>
+
+<ParamField path="--auto-launch" type="boolean">
+  Automatically launch ComfyUI in the default browser on startup.
+  
+  ```bash
+  python main.py --auto-launch
+  ```
+</ParamField>
+
+<ParamField path="--disable-auto-launch" type="boolean">
+  Disable auto-launching the browser (overrides `--auto-launch`).
+</ParamField>
+
+<ParamField path="--dont-print-server" type="boolean">
+  Suppress server output messages.
+</ParamField>
+
+<ParamField path="--enable-compress-response-body" type="boolean">
+  Enable response body compression to reduce bandwidth usage.
+</ParamField>
+
+## Directory Configuration
+
+<ParamField path="--base-directory" type="string">
+  Set the ComfyUI base directory for models, custom_nodes, input, output, temp, and user directories.
+  
+  ```bash
+  python main.py --base-directory /path/to/comfyui
+  ```
+</ParamField>
+
+<ParamField path="--output-directory" type="string">
+  Set the output directory for generated images. Overrides `--base-directory`.
+  
+  ```bash
+  python main.py --output-directory /path/to/outputs
+  ```
+</ParamField>
+
+<ParamField path="--input-directory" type="string">
+  Set the input directory for source images. Overrides `--base-directory`.
+  
+  ```bash
+  python main.py --input-directory /path/to/inputs
+  ```
+</ParamField>
+
+<ParamField path="--temp-directory" type="string">
+  Set the temporary files directory. Overrides `--base-directory`.
+  
+  ```bash
+  python main.py --temp-directory /tmp/comfyui
+  ```
+</ParamField>
+
+<ParamField path="--user-directory" type="string">
+  Set the user directory with an absolute path. Overrides `--base-directory`.
+  
+  ```bash
+  python main.py --user-directory /path/to/user
+  ```
+</ParamField>
+
+<ParamField path="--extra-model-paths-config" type="string">
+  Load one or more `extra_model_paths.yaml` files. Can be specified multiple times.
+  
+  ```bash
+  python main.py --extra-model-paths-config /path/to/config1.yaml --extra-model-paths-config /path/to/config2.yaml
+  ```
+</ParamField>
+
+## GPU and Device Configuration
+
+<ParamField path="--cuda-device" type="integer">
+  Set the CUDA device ID to use. Makes all other devices invisible.
+  
+  ```bash
+  python main.py --cuda-device 0
+  ```
+</ParamField>
+
+<ParamField path="--default-device" type="integer">
+  Set the default device ID while keeping other devices visible.
+  
+  ```bash
+  python main.py --default-device 0
+  ```
+</ParamField>
+
+<ParamField path="--directml" type="integer" default="-1">
+  Use torch-directml for AMD/Intel GPUs on Windows.
+  
+  ```bash
+  # Use default DirectML device
+  python main.py --directml
+  
+  # Use specific DirectML device
+  python main.py --directml 0
+  ```
+</ParamField>
+
+<ParamField path="--oneapi-device-selector" type="string">
+  Sets the oneAPI device selector for Intel GPUs.
+  
+  ```bash
+  python main.py --oneapi-device-selector "level_zero:0"
+  ```
+</ParamField>
+
+<ParamField path="--disable-ipex-optimize" type="boolean">
+  Disables ipex.optimize when loading models with Intel's Extension for PyTorch.
+</ParamField>
+
+<ParamField path="--supports-fp8-compute" type="boolean">
+  Force ComfyUI to act as if the device supports FP8 compute.
+</ParamField>
+
+## VRAM Management
+
+<ParamField path="--gpu-only" type="boolean">
+  Store and run everything (text encoders, CLIP, VAE, etc.) on the GPU. Requires high VRAM.
+  
+  ```bash
+  python main.py --gpu-only
+  ```
+</ParamField>
+
+<ParamField path="--highvram" type="boolean">
+  Keep models in GPU memory after use instead of unloading to CPU. Requires ~12GB+ VRAM.
+  
+  ```bash
+  python main.py --highvram
+  ```
+</ParamField>
+
+<ParamField path="--normalvram" type="boolean">
+  Force normal VRAM usage mode (used if lowvram is automatically enabled).
+  
+  ```bash
+  python main.py --normalvram
+  ```
+</ParamField>
+
+<ParamField path="--lowvram" type="boolean">
+  Split the UNet model to use less VRAM. For GPUs with 4-8GB VRAM.
+  
+  ```bash
+  python main.py --lowvram
+  ```
+</ParamField>
+
+<ParamField path="--novram" type="boolean">
+  Extreme memory saving mode. Use when lowvram isn't enough.
+  
+  ```bash
+  python main.py --novram
+  ```
+</ParamField>
+
+<ParamField path="--cpu" type="boolean">
+  Run everything on the CPU. Very slow but works without a GPU.
+  
+  ```bash
+  python main.py --cpu
+  ```
+</ParamField>
+
+<ParamField path="--reserve-vram" type="float">
+  Reserve amount of VRAM (in GB) for OS/other software.
+  
+  ```bash
+  python main.py --reserve-vram 2.0
+  ```
+</ParamField>
+
+<ParamField path="--disable-smart-memory" type="boolean">
+  Force aggressive offloading to RAM instead of keeping models in VRAM when possible.
+</ParamField>
+
+<ParamField path="--disable-dynamic-vram" type="boolean">
+  Disable dynamic VRAM management and use estimate-based model loading.
+</ParamField>
+
+<ParamField path="--async-offload" type="integer" default="2">
+  Use async weight offloading with specified number of streams. Enabled by default on NVIDIA.
+  
+  ```bash
+  # Use default 2 streams
+  python main.py --async-offload
+  
+  # Use 4 streams
+  python main.py --async-offload 4
+  ```
+</ParamField>
+
+<ParamField path="--disable-async-offload" type="boolean">
+  Disable async weight offloading.
+</ParamField>
+
+## Precision and Data Types
+
+### Global Precision
+
+<ParamField path="--force-fp32" type="boolean">
+  Force FP32 precision globally. Use if your GPU has issues with FP16.
+  
+  ```bash
+  python main.py --force-fp32
+  ```
+</ParamField>
+
+<ParamField path="--force-fp16" type="boolean">
+  Force FP16 precision globally.
+  
+  ```bash
+  python main.py --force-fp16
+  ```
+</ParamField>
+
+### UNet/Diffusion Model Precision
+
+<ParamField path="--fp32-unet" type="boolean">
+  Run the diffusion model in FP32 precision.
+</ParamField>
+
+<ParamField path="--fp16-unet" type="boolean">
+  Run the diffusion model in FP16 precision.
+</ParamField>
+
+<ParamField path="--bf16-unet" type="boolean">
+  Run the diffusion model in BF16 precision.
+</ParamField>
+
+<ParamField path="--fp64-unet" type="boolean">
+  Run the diffusion model in FP64 precision (very slow, for debugging).
+</ParamField>
+
+<ParamField path="--fp8_e4m3fn-unet" type="boolean">
+  Store UNet weights in FP8 E4M3FN format.
+</ParamField>
+
+<ParamField path="--fp8_e5m2-unet" type="boolean">
+  Store UNet weights in FP8 E5M2 format.
+</ParamField>
+
+<ParamField path="--fp8_e8m0fnu-unet" type="boolean">
+  Store UNet weights in FP8 E8M0FNU format.
+</ParamField>
+
+### VAE Precision
+
+<ParamField path="--fp16-vae" type="boolean">
+  Run the VAE in FP16. May cause black images on some GPUs.
+  
+  ```bash
+  python main.py --fp16-vae
+  ```
+</ParamField>
+
+<ParamField path="--fp32-vae" type="boolean">
+  Run the VAE in full precision FP32. Use if you get black images.
+  
+  ```bash
+  python main.py --fp32-vae
+  ```
+</ParamField>
+
+<ParamField path="--bf16-vae" type="boolean">
+  Run the VAE in BF16 precision.
+</ParamField>
+
+<ParamField path="--cpu-vae" type="boolean">
+  Run the VAE on the CPU instead of GPU. Slower but uses less VRAM.
+  
+  ```bash
+  python main.py --cpu-vae
+  ```
+</ParamField>
+
+### Text Encoder Precision
+
+<ParamField path="--fp8_e4m3fn-text-enc" type="boolean">
+  Store text encoder weights in FP8 (E4M3FN variant).
+</ParamField>
+
+<ParamField path="--fp8_e5m2-text-enc" type="boolean">
+  Store text encoder weights in FP8 (E5M2 variant).
+</ParamField>
+
+<ParamField path="--fp16-text-enc" type="boolean">
+  Store text encoder weights in FP16.
+</ParamField>
+
+<ParamField path="--fp32-text-enc" type="boolean">
+  Store text encoder weights in FP32.
+</ParamField>
+
+<ParamField path="--bf16-text-enc" type="boolean">
+  Store text encoder weights in BF16.
+</ParamField>
+
+## CUDA Configuration
+
+<ParamField path="--cuda-malloc" type="boolean">
+  Enable cudaMallocAsync (enabled by default for PyTorch 2.0+).
+</ParamField>
+
+<ParamField path="--disable-cuda-malloc" type="boolean">
+  Disable cudaMallocAsync. Use if you get CUDA errors.
+  
+  ```bash
+  python main.py --disable-cuda-malloc
+  ```
+</ParamField>
+
+<ParamField path="--force-channels-last" type="boolean">
+  Force channels-last memory format when inferencing models.
+</ParamField>
+
+<ParamField path="--force-non-blocking" type="boolean">
+  Force non-blocking operations for all tensors. May improve performance on non-NVIDIA systems.
+</ParamField>
+
+<ParamField path="--disable-pinned-memory" type="boolean">
+  Disable pinned memory usage.
+</ParamField>
+
+## Attention Mechanisms
+
+<ParamField path="--use-split-cross-attention" type="boolean">
+  Use split cross attention optimization. Ignored when xformers is used.
+</ParamField>
+
+<ParamField path="--use-quad-cross-attention" type="boolean">
+  Use sub-quadratic cross attention optimization. Ignored when xformers is used.
+</ParamField>
+
+<ParamField path="--use-pytorch-cross-attention" type="boolean">
+  Use PyTorch 2.0+ native cross attention function.
+  
+  ```bash
+  python main.py --use-pytorch-cross-attention
+  ```
+</ParamField>
+
+<ParamField path="--use-sage-attention" type="boolean">
+  Use Sage Attention implementation.
+</ParamField>
+
+<ParamField path="--use-flash-attention" type="boolean">
+  Use FlashAttention for faster attention computation.
+</ParamField>
+
+<ParamField path="--disable-xformers" type="boolean">
+  Disable xformers optimization.
+</ParamField>
+
+<ParamField path="--force-upcast-attention" type="boolean">
+  Force enable attention upcasting. Use if you get black images.
+</ParamField>
+
+<ParamField path="--dont-upcast-attention" type="boolean">
+  Disable all attention upcasting. For debugging only.
+</ParamField>
+
+## Caching Strategies
+
+<ParamField path="--cache-classic" type="boolean">
+  Use the old-style aggressive caching (default behavior).
+  
+  ```bash
+  python main.py --cache-classic
+  ```
+</ParamField>
+
+<ParamField path="--cache-lru" type="integer" default="0">
+  Use LRU caching with maximum N node results cached. May use more RAM/VRAM.
+  
+  ```bash
+  python main.py --cache-lru 10
+  ```
+</ParamField>
+
+<ParamField path="--cache-none" type="boolean">
+  Disable caching to reduce RAM/VRAM usage. Executes every node for each run.
+  
+  ```bash
+  python main.py --cache-none
+  ```
+</ParamField>
+
+<ParamField path="--cache-ram" type="float" default="4.0">
+  Use RAM pressure caching with specified headroom threshold (in GB). Removes large items when RAM is low.
+  
+  ```bash
+  # Use default 4GB threshold
+  python main.py --cache-ram
+  
+  # Use 8GB threshold
+  python main.py --cache-ram 8.0
+  ```
+</ParamField>
+
+## Preview Configuration
+
+<ParamField path="--preview-method" type="enum" default="none">
+  Default preview method for sampler nodes. Options: `none`, `auto`, `latent2rgb`, `taesd`.
+  
+  ```bash
+  python main.py --preview-method auto
+  ```
+</ParamField>
+
+<ParamField path="--preview-size" type="integer" default="512">
+  Set the maximum preview size for sampler nodes.
+  
+  ```bash
+  python main.py --preview-size 768
+  ```
+</ParamField>
+
+## File Loading Optimizations
+
+<ParamField path="--mmap-torch-files" type="boolean">
+  Use memory mapping when loading .ckpt/.pt files.
+  
+  ```bash
+  python main.py --mmap-torch-files
+  ```
+</ParamField>
+
+<ParamField path="--disable-mmap" type="boolean">
+  Don't use memory mapping when loading safetensors files.
+</ParamField>
+
+<ParamField path="--default-hashing-function" type="enum" default="sha256">
+  Hash function for duplicate filename/contents comparison. Options: `md5`, `sha1`, `sha256`, `sha512`.
+  
+  ```bash
+  python main.py --default-hashing-function sha512
+  ```
+</ParamField>
+
+## Performance Optimizations
+
+<ParamField path="--fast" type="string[]">
+  Enable experimental optimizations that may reduce quality. Use without arguments to enable all, or specify individual features.
+  
+  Available optimizations:
+  - `fp16_accumulation` - Use FP16 accumulation
+  - `fp8_matrix_mult` - Use FP8 matrix multiplication
+  - `cublas_ops` - Use cuBLAS operations
+  - `autotune` - Enable autotuning
+  
+  ```bash
+  # Enable all optimizations
+  python main.py --fast
+  
+  # Enable specific optimizations
+  python main.py --fast fp16_accumulation fp8_matrix_mult
+  ```
+  
+  <Warning>
+  These are experimental features that may crash ComfyUI or reduce image quality.
+  </Warning>
+</ParamField>
+
+<ParamField path="--deterministic" type="boolean">
+  Make PyTorch use slower deterministic algorithms when possible.
+  
+  ```bash
+  python main.py --deterministic
+  ```
+  
+  <Note>
+  This may not make images fully deterministic in all cases.
+  </Note>
+</ParamField>
+
+## Custom Nodes
+
+<ParamField path="--disable-all-custom-nodes" type="boolean">
+  Disable loading all custom nodes.
+  
+  ```bash
+  python main.py --disable-all-custom-nodes
+  ```
+</ParamField>
+
+<ParamField path="--whitelist-custom-nodes" type="string[]">
+  Specify custom node folders to load even when `--disable-all-custom-nodes` is enabled.
+  
+  ```bash
+  python main.py --disable-all-custom-nodes --whitelist-custom-nodes "ComfyUI-Manager" "custom-node-2"
+  ```
+</ParamField>
+
+<ParamField path="--disable-api-nodes" type="boolean">
+  Disable loading all API nodes. Also prevents the frontend from communicating with the internet.
+  
+  ```bash
+  python main.py --disable-api-nodes
+  ```
+</ParamField>
+
+## ComfyUI Manager
+
+<ParamField path="--enable-manager" type="boolean">
+  Enable the ComfyUI-Manager feature.
+  
+  ```bash
+  python main.py --enable-manager
+  ```
+</ParamField>
+
+<ParamField path="--disable-manager-ui" type="boolean">
+  Disable only the ComfyUI-Manager UI and endpoints. Background tasks still operate. Requires `--enable-manager`.
+  
+  ```bash
+  python main.py --enable-manager --disable-manager-ui
+  ```
+</ParamField>
+
+<ParamField path="--enable-manager-legacy-ui" type="boolean">
+  Enable the legacy UI of ComfyUI-Manager. Requires `--enable-manager`.
+  
+  ```bash
+  python main.py --enable-manager --enable-manager-legacy-ui
+  ```
+</ParamField>
+
+## Frontend Configuration
+
+<ParamField path="--front-end-version" type="string" default="comfyanonymous/ComfyUI@latest">
+  Specify the frontend version to use. Format: `[owner]/[repo]@[version]`
+  
+  ```bash
+  # Use latest frontend
+  python main.py --front-end-version Comfy-Org/ComfyUI_frontend@latest
+  
+  # Use specific version
+  python main.py --front-end-version Comfy-Org/ComfyUI_frontend@1.2.0
+  
+  # Use legacy frontend
+  python main.py --front-end-version Comfy-Org/ComfyUI_legacy_frontend@latest
+  ```
+</ParamField>
+
+<ParamField path="--front-end-root" type="string">
+  Local filesystem path to frontend directory. Overrides `--front-end-version`.
+  
+  ```bash
+  python main.py --front-end-root /path/to/custom/frontend
+  ```
+</ParamField>
+
+## Multi-User and Database
+
+<ParamField path="--multi-user" type="boolean">
+  Enable per-user storage.
+  
+  ```bash
+  python main.py --multi-user
+  ```
+</ParamField>
+
+<ParamField path="--database-url" type="string" default="sqlite:///user/comfyui.db">
+  Specify the database URL.
+  
+  ```bash
+  # Use in-memory database
+  python main.py --database-url "sqlite:///:memory:"
+  
+  # Use PostgreSQL
+  python main.py --database-url "postgresql://user:pass@localhost/comfyui"
+  ```
+</ParamField>
+
+<ParamField path="--disable-assets-autoscan" type="boolean">
+  Disable asset scanning on startup for database synchronization.
+</ParamField>
+
+<ParamField path="--comfy-api-base" type="string" default="https://api.comfy.org">
+  Set the base URL for the ComfyUI API.
+  
+  ```bash
+  python main.py --comfy-api-base "https://custom-api.example.com"
+  ```
+</ParamField>
+
+## Metadata and Output
+
+<ParamField path="--disable-metadata" type="boolean">
+  Disable saving prompt metadata in output files.
+  
+  ```bash
+  python main.py --disable-metadata
+  ```
+</ParamField>
+
+## Logging
+
+<ParamField path="--verbose" type="enum" default="INFO">
+  Set the logging level. Options: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`.
+  
+  ```bash
+  python main.py --verbose DEBUG
+  ```
+</ParamField>
+
+<ParamField path="--log-stdout" type="boolean">
+  Send process output to stdout instead of stderr.
+</ParamField>
+
+## Development and Testing
+
+<ParamField path="--quick-test-for-ci" type="boolean">
+  Quick test mode for continuous integration.
+</ParamField>
+
+<ParamField path="--windows-standalone-build" type="boolean">
+  Enable features for Windows standalone build (auto-launch, etc.).
+</ParamField>
+
+## Example Configurations
+
+### Low VRAM Setup (4GB GPU)
+
+```bash
+python main.py --lowvram --fp16-vae --preview-method auto
+```
+
+### High Performance (24GB+ GPU)
+
+```bash
+python main.py --highvram --gpu-only --preview-method taesd --fast
+```
+
+### CPU Only
+
+```bash
+python main.py --cpu --preview-method auto
+```
+
+### Remote Server
+
+```bash
+python main.py --listen 0.0.0.0 --port 8188 --preview-method auto
+```
+
+### Development Mode
+
+```bash
+python main.py --verbose DEBUG --auto-launch --preview-method taesd
+```
+
+### Shared Models with A1111
+
+```bash
+python main.py --extra-model-paths-config ./extra_model_paths.yaml --preview-method auto
+```
+
+### Intel Arc GPU
+
+```bash
+python main.py --use-pytorch-cross-attention --preview-method auto
+```
+
+### AMD ROCm
+
+```bash
+python main.py --use-pytorch-cross-attention --preview-method auto
+```

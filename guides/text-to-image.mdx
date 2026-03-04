@@ -1,0 +1,292 @@
+---
+title: Text-to-Image Generation
+description: Complete guide to generating images from text prompts in ComfyUI
+---
+
+Text-to-image generation is the foundational workflow in ComfyUI. This guide covers everything from basic generation to advanced prompt techniques.
+
+## Core Concepts
+
+### The Text-to-Image Pipeline
+
+1. **Text Encoding**: Your prompt is converted to embeddings via CLIP
+2. **Latent Generation**: Start with random noise in latent space
+3. **Denoising**: The model iteratively removes noise guided by your prompt
+4. **Decoding**: VAE converts the latent to a visible image
+
+### Key Nodes
+
+- **CheckpointLoaderSimple**: Loads MODEL, CLIP, and VAE
+- **CLIPTextEncode**: Converts text to conditioning
+- **EmptyLatentImage**: Creates the initial noise tensor
+- **KSampler**: Performs the denoising process
+- **VAEDecode**: Converts latent to pixels
+- **SaveImage**: Saves the final output
+
+## Basic Workflow
+
+<Steps>
+
+### Load your model
+
+Add a **CheckpointLoaderSimple** node and select your checkpoint. Common choices:
+- SD 1.5: General purpose, 512×512
+- SDXL: Higher quality, 1024×1024
+- SD3/SD3.5: Latest architecture with better prompt understanding
+
+### Encode your prompts
+
+Add two **CLIPTextEncode** nodes:
+
+**Positive prompt** (what you want):
+```
+A serene mountain landscape at sunset, dramatic lighting, 
+high detail, photorealistic, 8k resolution
+```
+
+**Negative prompt** (what to avoid):
+```
+blurry, low quality, distorted, ugly, bad composition
+```
+
+### Create empty latent
+
+Add **EmptyLatentImage** with dimensions matching your model:
+- SD 1.5: 512×512
+- SDXL: 1024×1024
+- SD3: 1024×1024 or higher
+
+### Configure sampling
+
+Add **KSampler** and configure:
+
+**Essential parameters**:
+- **steps**: 20-30 (more steps = more refinement)
+- **cfg**: 7-9 (classifier-free guidance scale)
+- **seed**: Random number for reproducibility
+- **sampler_name**: euler, dpm++, or others
+- **scheduler**: normal, karras, or exponential
+
+**Quality vs Speed**:
+- Fast: euler, 15-20 steps
+- Balanced: dpm++ 2m karras, 25 steps  
+- Quality: dpm++ sde karras, 30-40 steps
+
+### Decode and save
+
+1. Add **VAEDecode** connected to KSampler output
+2. Add **SaveImage** connected to VAEDecode
+3. Press **Ctrl+Enter** to generate
+
+</Steps>
+
+## Advanced Prompting
+
+### Emphasis Syntax
+
+Control the importance of specific words:
+
+```
+(masterpiece:1.3)  // Increase emphasis by 30%
+(background:0.7)   // Decrease emphasis by 30%
+((very important)) // Nested = (very important:1.21)
+```
+
+Default emphasis for `()` is 1.1.
+
+### Dynamic Prompts
+
+Use wildcards for variation:
+
+```
+A {red|blue|green} sports car in {rain|snow|sunshine}
+```
+
+Each generation randomly selects from the options.
+
+### Comments
+
+C-style comments work in prompts:
+
+```
+A beautiful landscape // This is ignored
+/* Multi-line
+   comments also work */
+```
+
+### Textual Inversion
+
+Place embeddings in `models/embeddings/` and reference:
+
+```
+embedding:my_style.pt, detailed portrait
+```
+
+## Parameter Guide
+
+### Seed
+
+- **Purpose**: Controls randomness
+- **Same seed + settings = identical output**
+- **Tip**: Lock seed when iterating on prompts
+
+### Steps
+
+- **Range**: 15-50 typically
+- **15-20**: Fast preview quality
+- **25-35**: Production quality
+- **40+**: Diminishing returns
+
+### CFG Scale
+
+- **Range**: 1-20
+- **1-5**: Creative, loose interpretation
+- **7-9**: Balanced (recommended)
+- **10-15**: Strict adherence to prompt
+- **15+**: May oversaturate or distort
+
+### Sampler Selection
+
+**Fast samplers**:
+- `euler`: Simple, fast, good for previews
+- `euler_ancestral`: Adds variation between steps
+
+**Quality samplers**:
+- `dpm++ 2m karras`: Excellent quality/speed balance
+- `dpm++ sde karras`: High quality, slower
+- `dpm++ 2m sde karras`: Best quality, slowest
+
+**Specialized**:
+- `ddim`: Deterministic, good for img2img
+- `uni_pc`: Fast convergence, experimental
+
+### Scheduler
+
+- **normal**: Linear noise schedule
+- **karras**: Better for DPM++ samplers
+- **exponential**: Smoother transitions
+- **sgm_uniform**: For SD3/SDXL
+
+## Workflow Example: High-Quality Portrait
+
+```json
+{
+  "checkpoint": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "sd_xl_base_1.0.safetensors"
+    }
+  },
+  "positive": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": ["checkpoint", 1],
+      "text": "professional portrait photograph, (soft studio lighting:1.2), detailed face, natural expression, bokeh background, Canon 5D, 85mm lens, f/1.8"
+    }
+  },
+  "negative": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": ["checkpoint", 1],
+      "text": "blurry, distorted features, bad anatomy, oversaturated, artificial, plastic skin"
+    }
+  },
+  "empty_latent": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "width": 1024,
+      "height": 1024,
+      "batch_size": 1
+    }
+  },
+  "sampler": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": ["checkpoint", 0],
+      "positive": ["positive", 0],
+      "negative": ["negative", 0],
+      "latent_image": ["empty_latent", 0],
+      "seed": 42,
+      "steps": 30,
+      "cfg": 8.0,
+      "sampler_name": "dpm++ 2m karras",
+      "scheduler": "karras",
+      "denoise": 1.0
+    }
+  },
+  "vae_decode": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["sampler", 0],
+      "vae": ["checkpoint", 2]
+    }
+  },
+  "save": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": ["vae_decode", 0],
+      "filename_prefix": "portrait"
+    }
+  }
+}
+```
+
+## Batch Generation
+
+Generate multiple variations:
+
+1. Set **batch_size** in EmptyLatentImage to 4 (or higher)
+2. Keep seed the same for subtle variations
+3. Or use different seeds for diverse results
+
+## LoRA Integration
+
+Enhance your model with LoRAs:
+
+1. Add **LoraLoader** node
+2. Connect MODEL and CLIP from checkpoint
+3. Select LoRA file
+4. Set **strength_model** (0.5-1.0 typical)
+5. Set **strength_clip** (0.5-1.0 typical)
+6. Connect LoraLoader outputs to KSampler
+
+```json
+{
+  "lora": {
+    "class_type": "LoraLoader",
+    "inputs": {
+      "model": ["checkpoint", 0],
+      "clip": ["checkpoint", 1],
+      "lora_name": "add_detail.safetensors",
+      "strength_model": 0.8,
+      "strength_clip": 0.8
+    }
+  }
+}
+```
+
+## Troubleshooting
+
+### Black/blank images
+- Check VAE compatibility with your model
+- Try loading a separate VAE with **VAELoader**
+- Reduce CFG scale
+
+### Low quality results
+- Increase steps (try 30-40)
+- Use better sampler (dpm++ 2m karras)
+- Improve prompt detail and specificity
+- Check if model supports your resolution
+
+### Out of memory
+- Reduce image dimensions
+- Lower batch size
+- Use tiled VAE for very large images
+- Enable CPU offloading: `--lowvram` flag
+
+## Next Steps
+
+- Explore [Image-to-Image](/guides/image-to-image) for variations
+- Learn [Inpainting](/guides/inpainting) for editing
+- Try [ControlNet](/guides/controlnet) for precise control
+- Experiment with different models and LoRAs

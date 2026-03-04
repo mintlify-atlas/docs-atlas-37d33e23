@@ -1,0 +1,325 @@
+---
+title: Installation
+description: Install ComfyUI on Windows, Linux, or macOS
+---
+
+## Installation options
+
+Choose the installation method that works best for you:
+
+<Tabs>
+  <Tab title="Desktop app">
+    The easiest way to get started with ComfyUI.
+    
+    ### Available platforms
+    - Windows
+    - macOS
+    
+    Download from the [official website](https://www.comfy.org/download).
+  </Tab>
+  
+  <Tab title="Windows portable">
+    Get the latest commits in a completely portable package.
+    
+    ### Download
+    
+    [Download the latest Windows portable build](https://github.com/comfyanonymous/ComfyUI/releases/latest/download/ComfyUI_windows_portable_nvidia.7z)
+    
+    ### Installation steps
+    
+    <Steps>
+      <Step title="Download and extract">
+        Download the `.7z` file and extract it with [7-Zip](https://7-zip.org) or Windows Explorer (on recent Windows versions).
+        
+        <Info>
+          If you have trouble extracting, right-click the file → Properties → Unblock
+        </Info>
+      </Step>
+      
+      <Step title="Add your models">
+        Place your checkpoint files (`.ckpt` or `.safetensors`) in:
+        ```
+        ComfyUI\models\checkpoints
+        ```
+        
+        For larger models with multiple files, follow the model's instructions to know which subfolder to use in `ComfyUI\models\`.
+      </Step>
+      
+      <Step title="Run ComfyUI">
+        Run the included executable to start ComfyUI.
+        
+        <Note>
+          The portable build includes Python 3.13 and PyTorch CUDA 13.0. Update your NVIDIA drivers if it doesn't start.
+        </Note>
+      </Step>
+    </Steps>
+    
+    ### Alternative downloads
+    
+    - [AMD GPU build](https://github.com/comfyanonymous/ComfyUI/releases/latest/download/ComfyUI_windows_portable_amd.7z) - Experimental support for AMD GPUs
+    - [CUDA 12.6 build](https://github.com/comfyanonymous/ComfyUI/releases/latest/download/ComfyUI_windows_portable_nvidia_cu126.7z) - For NVIDIA 10 series and older GPUs
+    
+    ### Share models with other UIs
+    
+    Edit `extra_model_paths.yaml.example` in the ComfyUI directory, rename it to `extra_model_paths.yaml`, and configure your model paths.
+  </Tab>
+  
+  <Tab title="comfy-cli">
+    Install using the ComfyUI command-line interface.
+    
+    ```bash
+    pip install comfy-cli
+    comfy install
+    ```
+    
+    See the [comfy-cli documentation](https://docs.comfy.org/comfy-cli/getting-started) for more details.
+  </Tab>
+  
+  <Tab title="Manual install">
+    Install from source for full control and customization.
+    
+    See the [Manual installation](#manual-installation) section below.
+  </Tab>
+</Tabs>
+
+## Manual installation
+
+### Prerequisites
+
+<Info>
+  **Python version:** Python 3.13 is recommended. Python 3.14 works but some custom nodes may have issues. If you have dependency issues on 3.13, try 3.12.
+</Info>
+
+<Info>
+  **PyTorch version:** PyTorch 2.4+ is supported. We recommend using the latest major version with the latest CUDA version (unless it's less than 2 weeks old).
+</Info>
+
+### Installation steps
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/comfyanonymous/ComfyUI.git
+    cd ComfyUI
+    ```
+  </Step>
+  
+  <Step title="Install PyTorch">
+    Choose the installation command for your GPU:
+    
+    <Tabs>
+      <Tab title="NVIDIA">
+        **Stable version:**
+        ```bash
+        pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu130
+        ```
+        
+        **Nightly version (may have performance improvements):**
+        ```bash
+        pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu130
+        ```
+        
+        <Warning>
+          If you get "Torch not compiled with CUDA enabled" error:
+          ```bash
+          pip uninstall torch
+          # Then reinstall with the command above
+          ```
+        </Warning>
+      </Tab>
+      
+      <Tab title="AMD (Linux)">
+        **Stable version (ROCm 7.1):**
+        ```bash
+        pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm7.1
+        ```
+        
+        **Nightly version (ROCm 7.2, may have performance improvements):**
+        ```bash
+        pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/rocm7.2
+        ```
+      </Tab>
+      
+      <Tab title="AMD (Windows/Linux - Experimental)">
+        <Warning>
+          RDNA 3, 3.5, and 4 only.
+        </Warning>
+        
+        **RDNA 3 (RX 7000 series):**
+        ```bash
+        pip install --pre torch torchvision torchaudio --index-url https://rocm.nightlies.amd.com/v2/gfx110X-all/
+        ```
+        
+        **RDNA 3.5 (Strix Halo/Ryzen AI Max+ 365):**
+        ```bash
+        pip install --pre torch torchvision torchaudio --index-url https://rocm.nightlies.amd.com/v2/gfx1151/
+        ```
+        
+        **RDNA 4 (RX 9000 series):**
+        ```bash
+        pip install --pre torch torchvision torchaudio --index-url https://rocm.nightlies.amd.com/v2/gfx120X-all/
+        ```
+      </Tab>
+      
+      <Tab title="Intel Arc">
+        **Stable version:**
+        ```bash
+        pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
+        ```
+        
+        **Nightly version:**
+        ```bash
+        pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/xpu
+        ```
+        
+        See the [PyTorch XPU documentation](https://pytorch.org/docs/main/notes/get_start_xpu.html) for more information.
+      </Tab>
+      
+      <Tab title="Apple Silicon">
+        Follow the [Accelerated PyTorch training on Mac](https://developer.apple.com/metal/pytorch/) guide to install PyTorch nightly.
+      </Tab>
+    </Tabs>
+  </Step>
+  
+  <Step title="Install dependencies">
+    ```bash
+    pip install -r requirements.txt
+    ```
+  </Step>
+  
+  <Step title="Add your models">
+    Place your models in the appropriate folders:
+    
+    - Checkpoints: `models/checkpoints`
+    - VAE: `models/vae`
+    - LoRAs: `models/loras`
+    - Embeddings: `models/embeddings`
+  </Step>
+</Steps>
+
+## Running ComfyUI
+
+### Basic usage
+
+```bash
+python main.py
+```
+
+ComfyUI will start and be accessible at `http://127.0.0.1:8188` by default.
+
+### Command-line options
+
+<CodeGroup>
+```bash Listen on specific address and port
+python main.py --listen 0.0.0.0 --port 8188
+```
+
+```bash CPU mode (slow)
+python main.py --cpu
+```
+
+```bash Enable high-quality previews
+python main.py --preview-method taesd
+```
+
+```bash Auto-launch browser
+python main.py --auto-launch
+```
+
+```bash Enable ComfyUI-Manager
+python main.py --enable-manager
+```
+
+```bash TLS/SSL support
+python main.py --tls-keyfile key.pem --tls-certfile cert.pem
+```
+</CodeGroup>
+
+### AMD-specific options
+
+<Tabs>
+  <Tab title="Unsupported cards">
+    For AMD cards not officially supported by ROCm:
+    
+    **RDNA2 or older (6700, 6600):**
+    ```bash
+    HSA_OVERRIDE_GFX_VERSION=10.3.0 python main.py
+    ```
+    
+    **RDNA3 cards (7600):**
+    ```bash
+    HSA_OVERRIDE_GFX_VERSION=11.0.0 python main.py
+    ```
+  </Tab>
+  
+  <Tab title="Performance tips">
+    Enable experimental memory-efficient attention:
+    ```bash
+    TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1 python main.py --use-pytorch-cross-attention
+    ```
+    
+    Enable TunableOp (slow first run, faster subsequent runs):
+    ```bash
+    PYTORCH_TUNABLEOP_ENABLED=1 python main.py
+    ```
+  </Tab>
+</Tabs>
+
+## Installing ComfyUI-Manager
+
+ComfyUI-Manager allows you to easily install, update, and manage custom nodes.
+
+<Steps>
+  <Step title="Install manager dependencies">
+    ```bash
+    pip install -r manager_requirements.txt
+    ```
+  </Step>
+  
+  <Step title="Enable the manager">
+    ```bash
+    python main.py --enable-manager
+    ```
+  </Step>
+</Steps>
+
+### Manager options
+
+| Flag | Description |
+|------|-------------|
+| `--enable-manager` | Enable ComfyUI-Manager |
+| `--enable-manager-legacy-ui` | Use legacy manager UI (requires `--enable-manager`) |
+| `--disable-manager-ui` | Disable manager UI but keep background features |
+
+## High-quality previews
+
+By default, ComfyUI uses low-resolution previews. To enable high-quality TAESD previews:
+
+<Steps>
+  <Step title="Download TAESD models">
+    Download the following files:
+    - [taesd_decoder.pth](https://github.com/madebyollin/taesd/)
+    - [taesdxl_decoder.pth](https://github.com/madebyollin/taesd/)
+    - [taesd3_decoder.pth](https://github.com/madebyollin/taesd/)
+    - [taef1_decoder.pth](https://github.com/madebyollin/taesd/)
+  </Step>
+  
+  <Step title="Place in VAE approx folder">
+    Move the downloaded files to:
+    ```
+    models/vae_approx
+    ```
+  </Step>
+  
+  <Step title="Launch with TAESD previews">
+    ```bash
+    python main.py --preview-method taesd
+    ```
+  </Step>
+</Steps>
+
+## Next steps
+
+<Card title="Create your first workflow" icon="rocket" href="/quickstart">
+  Now that ComfyUI is installed, learn how to create your first image generation workflow.
+</Card>

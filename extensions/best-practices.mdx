@@ -1,0 +1,526 @@
+---
+title: Best Practices for Custom Nodes
+description: Guidelines and best practices for developing high-quality ComfyUI custom nodes
+---
+
+Follow these best practices to create reliable, performant, and user-friendly custom nodes for ComfyUI.
+
+## Code Organization
+
+### File Structure
+
+Organize your extension with a clear directory structure:
+
+```
+my-custom-nodes/
+├── __init__.py              # Extension entry point
+├── nodes/
+│   ├── __init__.py
+│   ├── image_processing.py  # Image nodes
+│   └── text_processing.py   # Text nodes
+├── web/                     # Frontend extensions
+│   └── my_extension.js
+├── example_workflows/       # Example workflows
+│   └── example.json
+├── locales/                 # Translations
+│   └── en/
+│       └── main.json
+├── requirements.txt         # Python dependencies
+└── README.md
+```
+
+### Module Naming
+
+Use descriptive, unique names to avoid conflicts:
+
+<CodeGroup>
+```python Good
+class MyExtension_ImageBlur(io.ComfyNode):
+    @classmethod
+    def define_schema(cls) -> io.Schema:
+        return io.Schema(
+            node_id="MyExtension_ImageBlur",
+            display_name="Image Blur",
+            category="MyExtension/Image",
+            ...
+        )
+```
+
+```python Avoid
+class ImageBlur(io.ComfyNode):  # Too generic
+    @classmethod
+    def define_schema(cls) -> io.Schema:
+        return io.Schema(
+            node_id="Blur",  # Likely to conflict
+            display_name="Blur",
+            category="image",  # Generic category
+            ...
+        )
+```
+</CodeGroup>
+
+## Performance Optimization
+
+### Use Lazy Inputs
+
+Implement lazy evaluation for expensive operations:
+
+```python
+class ExpensiveNode(io.ComfyNode):
+    @classmethod
+    def define_schema(cls) -> io.Schema:
+        return io.Schema(
+            node_id="ExpensiveNode",
+            inputs=[
+                io.Image.Input("image"),
+                io.Boolean.Input("enable_processing"),
+                io.Int.Input(
+                    "iterations",
+                    lazy=True,  # Only evaluate if needed
+                    default=10
+                ),
+            ],
+            outputs=[io.Image.Output()],
+        )
+    
+    @classmethod
+    def check_lazy_status(cls, image, enable_processing, iterations):
+        # Only request iterations if processing is enabled
+        if enable_processing:
+            return ["iterations"]
+        return []
+    
+    @classmethod
+    def execute(cls, image, enable_processing, iterations):
+        if not enable_processing:
+            return io.NodeOutput(image)
+        
+        # iterations is guaranteed to be available here
+        for _ in range(iterations):
+            image = process(image)
+        
+        return io.NodeOutput(image)
+```
+
+### Implement Fingerprinting
+
+Avoid re-execution when inputs haven't meaningfully changed:
+
+```python
+import hashlib
+
+class ImageLoader(io.ComfyNode):
+    @classmethod
+    def fingerprint_inputs(cls, image_path):
+        # Only reload if file actually changed
+        import os
+        if os.path.exists(image_path):
+            stat = os.stat(image_path)
+            return f"{image_path}:{stat.st_mtime}:{stat.st_size}"
+        return image_path
+```
+
+### Memory Management
+
+Be mindful of GPU memory:
+
+```python
+import torch
+
+class MemoryEfficientNode(io.ComfyNode):
+    @classmethod
+    def execute(cls, large_tensor):
+        # Process in smaller chunks
+        batch_size = 8
+        results = []
+        
+        for i in range(0, len(large_tensor), batch_size):
+            batch = large_tensor[i:i+batch_size]
+            result = process_batch(batch)
+            results.append(result.cpu())  # Move to CPU
+            
+            # Clear GPU memory
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        
+        return io.NodeOutput(torch.cat(results).cuda())
+```
+
+## User Experience
+
+### Provide Helpful Tooltips
+
+Add clear, descriptive tooltips:
+
+```python
+io.Float.Input(
+    "strength",
+    min=0.0,
+    max=2.0,
+    default=1.0,
+    tooltip="Controls the strength of the effect. "
+            "Values > 1.0 increase intensity, < 1.0 decrease it."
+)
+```
+
+### Use Appropriate Input Types
+
+Choose the right input type and display mode:
+
+<CodeGroup>
+```python Slider for Range Values
+io.Float.Input(
+    "blur_radius",
+    min=0.0,
+    max=100.0,
+    step=0.1,
+    display_mode=io.NumberDisplay.slider,  # Visual feedback
+    tooltip="Blur radius in pixels"
+)
+```
+
+```python Number Input for Precise Values
+io.Int.Input(
+    "seed",
+    min=0,
+    max=2**32 - 1,
+    display_mode=io.NumberDisplay.number,  # Precise entry
+    control_after_generate=io.ControlAfterGenerate.randomize
+)
+```
+</CodeGroup>
+
+### Sensible Defaults
+
+Provide good default values:
+
+```python
+io.Schema(
+    node_id="ImageResize",
+    inputs=[
+        io.Image.Input("image"),
+        io.Int.Input(
+            "width",
+            default=512,  # Common size
+            min=64,
+            max=4096,
+            step=64
+        ),
+        io.Int.Input(
+            "height",
+            default=512,
+            min=64,
+            max=4096,
+            step=64
+        ),
+        io.Combo.Input(
+            "interpolation",
+            options=["bicubic", "bilinear", "nearest"],
+            default="bicubic"  # Best quality
+        ),
+    ],
+    outputs=[io.Image.Output()],
+)
+```
+
+## Error Handling
+
+### Validate Inputs
+
+Check inputs and provide clear error messages:
+
+```python
+class SafeNode(io.ComfyNode):
+    @classmethod
+    def execute(cls, image, scale_factor):
+        if scale_factor <= 0:
+            raise ValueError(
+                f"scale_factor must be positive, got {scale_factor}"
+            )
+        
+        if image.shape[0] == 0:
+            raise ValueError("Input image batch is empty")
+        
+        # Validate image dimensions
+        if image.shape[1] < 8 or image.shape[2] < 8:
+            raise ValueError(
+                f"Image too small: {image.shape[1]}x{image.shape[2]}. "
+                f"Minimum size is 8x8"
+            )
+        
+        result = scale_image(image, scale_factor)
+        return io.NodeOutput(result)
+```
+
+### Handle Edge Cases
+
+Consider edge cases in your implementation:
+
+```python
+@classmethod
+def execute(cls, images, mask=None):
+    # Handle optional mask
+    if mask is None:
+        mask = torch.ones_like(images[:, :, :, 0])
+    
+    # Handle dimension mismatch
+    if mask.shape[1:] != images.shape[1:3]:
+        import torch.nn.functional as F
+        mask = F.interpolate(
+            mask.unsqueeze(1),
+            size=(images.shape[1], images.shape[2]),
+            mode='bilinear'
+        ).squeeze(1)
+    
+    # Handle empty batch
+    if images.shape[0] == 0:
+        return io.NodeOutput(images)
+    
+    result = apply_mask(images, mask)
+    return io.NodeOutput(result)
+```
+
+## Documentation
+
+### Docstrings
+
+Document your nodes with clear docstrings:
+
+```python
+class ImageBlend(io.ComfyNode):
+    """
+    Blends two images together using various blend modes.
+    
+    Supports multiple blend modes including normal, multiply, screen,
+    and overlay. The blend strength can be controlled with the opacity
+    parameter.
+    
+    The images must have the same dimensions. If they differ, the second
+    image will be automatically resized to match the first.
+    """
+    
+    @classmethod
+    def define_schema(cls) -> io.Schema:
+        ...
+```
+
+### Example Workflows
+
+Provide example workflows in `example_workflows/`:
+
+```json
+{
+  "last_node_id": 3,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "outputs": {"IMAGE": {"links": [1]}}
+    },
+    {
+      "id": 2,
+      "type": "MyExtension_ImageBlur",
+      "inputs": {"image": {"link": 1}},
+      "widgets_values": [5.0]
+    }
+  ]
+}
+```
+
+### README
+
+Include comprehensive README:
+
+```markdown
+# My Custom Nodes
+
+## Installation
+
+```bash
+cd ComfyUI/custom_nodes/
+git clone https://github.com/username/my-custom-nodes
+cd my-custom-nodes
+pip install -r requirements.txt
+```
+
+## Nodes
+
+### Image Blur
+Blurs an image using Gaussian blur.
+
+**Inputs:**
+- image: Input image
+- radius: Blur radius (0-100)
+
+**Outputs:**
+- image: Blurred image
+```
+
+## Testing
+
+### Test Your Nodes
+
+Create unit tests for your nodes:
+
+```python
+import torch
+import pytest
+from .nodes import ImageBlur
+
+def test_image_blur():
+    # Create test image
+    image = torch.rand(1, 512, 512, 3)
+    
+    # Execute node
+    result = ImageBlur.execute(image=image, radius=5.0)
+    
+    # Verify output
+    assert result[0].shape == image.shape
+    assert result[0].min() >= 0.0
+    assert result[0].max() <= 1.0
+
+def test_edge_cases():
+    # Test with minimal image
+    tiny = torch.rand(1, 8, 8, 3)
+    result = ImageBlur.execute(image=tiny, radius=1.0)
+    assert result[0].shape == tiny.shape
+    
+    # Test with large radius
+    image = torch.rand(1, 256, 256, 3)
+    result = ImageBlur.execute(image=image, radius=100.0)
+    assert result[0].shape == image.shape
+```
+
+## Versioning and Compatibility
+
+### Version Your Extension
+
+Use semantic versioning:
+
+```python
+__version__ = "1.2.0"
+
+class MyExtension(ComfyExtension):
+    async def on_load(self) -> None:
+        print(f"Loading My Extension v{__version__}")
+```
+
+### Maintain Backwards Compatibility
+
+When updating nodes, preserve compatibility:
+
+```python
+class ImageProcessor(io.ComfyNode):
+    @classmethod
+    def define_schema(cls) -> io.Schema:
+        return io.Schema(
+            inputs=[
+                io.Image.Input("image"),
+                # New parameter with default
+                io.Combo.Input(
+                    "mode",
+                    options=["fast", "quality"],
+                    default="fast"  # Maintains old behavior
+                ),
+            ],
+            ...
+        )
+```
+
+## Common Patterns
+
+### Progress Reporting
+
+Report progress for long operations:
+
+```python
+from comfy_api.latest import ComfyAPISync
+
+class LongRunningNode(io.ComfyNode):
+    @classmethod
+    def execute(cls, image, iterations):
+        api = ComfyAPISync()
+        results = []
+        
+        for i in range(iterations):
+            result = process_iteration(image, i)
+            results.append(result)
+            
+            # Update progress
+            api.execution.set_progress(
+                value=i + 1,
+                max_value=iterations,
+                preview_image=result  # Show preview
+            )
+        
+        return io.NodeOutput(torch.stack(results))
+```
+
+### Batch Processing
+
+Handle batch inputs efficiently:
+
+```python
+@classmethod
+def execute(cls, images):
+    # Process entire batch at once (efficient)
+    results = batch_process(images)
+    
+    # Or process individually if needed
+    # results = [process_single(img) for img in images]
+    # results = torch.stack(results)
+    
+    return io.NodeOutput(results)
+```
+
+<Warning>
+Always test your nodes with different batch sizes to ensure correct behavior.
+</Warning>
+
+## Security Considerations
+
+### Validate File Paths
+
+Never trust user-provided paths:
+
+```python
+import os
+
+def safe_load_file(file_path, allowed_dir):
+    # Resolve to absolute path
+    abs_path = os.path.abspath(file_path)
+    abs_allowed = os.path.abspath(allowed_dir)
+    
+    # Check if path is within allowed directory
+    if not abs_path.startswith(abs_allowed):
+        raise ValueError(f"Access denied: {file_path}")
+    
+    return abs_path
+```
+
+### Sanitize Inputs
+
+Validate and sanitize all user inputs:
+
+```python
+import re
+
+@classmethod
+def execute(cls, filename, content):
+    # Sanitize filename
+    safe_name = re.sub(r'[^a-zA-Z0-9_.-]', '', filename)
+    if not safe_name:
+        raise ValueError("Invalid filename")
+    
+    # Limit content size
+    max_size = 10 * 1024 * 1024  # 10MB
+    if len(content) > max_size:
+        raise ValueError("Content too large")
+    
+    # Process safely
+    ...
+```
+
+<Tip>
+Follow these best practices to create nodes that are fast, reliable, and user-friendly!
+</Tip>

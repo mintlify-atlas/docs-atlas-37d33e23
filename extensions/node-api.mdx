@@ -1,0 +1,460 @@
+---
+title: Custom Node API Reference
+description: Complete API reference for creating custom ComfyUI nodes
+---
+
+## Core Classes
+
+### ComfyNode
+
+Base class for all custom nodes.
+
+```python
+class ComfyNode:
+    @classmethod
+    def define_schema(cls) -> io.Schema:
+        """Define node metadata, inputs, and outputs"""
+        pass
+    
+    @classmethod
+    def execute(cls, **inputs) -> io.NodeOutput:
+        """Execute the node's processing logic"""
+        pass
+    
+    @classmethod
+    def check_lazy_status(cls, **inputs) -> list[str]:
+        """Optional: Control lazy input evaluation"""
+        pass
+    
+    @classmethod
+    def fingerprint_inputs(cls, **inputs) -> str | int:
+        """Optional: Control when the node re-executes"""
+        pass
+```
+
+### Schema
+
+Defines node metadata.
+
+```python
+io.Schema(
+    node_id: str,
+    display_name: str,
+    category: str,
+    inputs: list[Input],
+    outputs: list[Output]
+)
+```
+
+<ParamField path="node_id" type="string" required>
+  Unique identifier for the node
+</ParamField>
+
+<ParamField path="display_name" type="string" required>
+  Display name in the UI
+</ParamField>
+
+<ParamField path="category" type="string" required>
+  Category path (e.g., "image/filters")
+</ParamField>
+
+<ParamField path="inputs" type="list[Input]" required>
+  List of input definitions
+</ParamField>
+
+<ParamField path="outputs" type="list[Output]" required>
+  List of output definitions
+</ParamField>
+
+## Input Types
+
+### Image
+
+Image data input/output.
+
+```python
+io.Image.Input(
+    id: str,
+    display_name: str = None,
+    optional: bool = False,
+    tooltip: str = None,
+    lazy: bool = None,
+    raw_link: bool = None,
+    advanced: bool = None
+)
+
+io.Image.Output(
+    id: str = None,
+    display_name: str = None,
+    tooltip: str = None
+)
+```
+
+**Type:** `torch.Tensor` with shape `[B, H, W, C]` where values are in range `[0, 1]`
+
+### Int
+
+Integer input/output.
+
+```python
+io.Int.Input(
+    id: str,
+    display_name: str = None,
+    optional: bool = False,
+    tooltip: str = None,
+    lazy: bool = None,
+    default: int = None,
+    min: int = None,
+    max: int = None,
+    step: int = None,
+    control_after_generate: bool | ControlAfterGenerate = None,
+    display_mode: NumberDisplay = None,
+    socketless: bool = None,
+    force_input: bool = None,
+    advanced: bool = None
+)
+```
+
+<ParamField path="min" type="int">
+  Minimum value
+</ParamField>
+
+<ParamField path="max" type="int">
+  Maximum value
+</ParamField>
+
+<ParamField path="step" type="int">
+  Slider step size
+</ParamField>
+
+<ParamField path="display_mode" type="NumberDisplay">
+  `NumberDisplay.number` or `NumberDisplay.slider`
+</ParamField>
+
+### Float
+
+Floating-point input/output.
+
+```python
+io.Float.Input(
+    id: str,
+    display_name: str = None,
+    optional: bool = False,
+    tooltip: str = None,
+    lazy: bool = None,
+    default: float = None,
+    min: float = None,
+    max: float = None,
+    step: float = None,
+    round: float = None,
+    display_mode: NumberDisplay = None,
+    gradient_stops: list[list[float]] = None,
+    socketless: bool = None,
+    force_input: bool = None,
+    advanced: bool = None
+)
+```
+
+<ParamField path="round" type="float">
+  Precision to round to (defaults to step value)
+</ParamField>
+
+<ParamField path="gradient_stops" type="list[list[float]]">
+  For gradient slider mode
+</ParamField>
+
+### String
+
+Text input/output.
+
+```python
+io.String.Input(
+    id: str,
+    display_name: str = None,
+    optional: bool = False,
+    tooltip: str = None,
+    lazy: bool = None,
+    multiline: bool = False,
+    placeholder: str = None,
+    default: str = None,
+    dynamic_prompts: bool = None,
+    socketless: bool = None,
+    force_input: bool = None,
+    advanced: bool = None
+)
+```
+
+<ParamField path="multiline" type="bool">
+  Enable multiline text area
+</ParamField>
+
+<ParamField path="dynamic_prompts" type="bool">
+  Enable wildcard/dynamic prompt syntax
+</ParamField>
+
+### Combo
+
+Dropdown selection input.
+
+```python
+io.Combo.Input(
+    id: str,
+    options: list[str] | list[int] | type[Enum],
+    display_name: str = None,
+    optional: bool = False,
+    tooltip: str = None,
+    lazy: bool = None,
+    default: str | int | Enum = None,
+    control_after_generate: bool | ControlAfterGenerate = None,
+    upload: UploadType = None,
+    image_folder: FolderType = None,
+    remote: RemoteOptions = None,
+    socketless: bool = None,
+    advanced: bool = None
+)
+```
+
+<ParamField path="options" type="list[str] | list[int] | Enum" required>
+  Available options for selection
+</ParamField>
+
+### Boolean
+
+Boolean toggle input.
+
+```python
+io.Boolean.Input(
+    id: str,
+    display_name: str = None,
+    optional: bool = False,
+    tooltip: str = None,
+    lazy: bool = None,
+    default: bool = None,
+    label_on: str = None,
+    label_off: str = None,
+    socketless: bool = None,
+    force_input: bool = None,
+    advanced: bool = None
+)
+```
+
+### Model Types
+
+ComfyUI provides several model-specific input types:
+
+<CodeGroup>
+```python Model
+io.Model.Input("model")
+io.Model.Output()
+```
+
+```python VAE
+io.Vae.Input("vae")
+io.Vae.Output()
+```
+
+```python CLIP
+io.Clip.Input("clip")
+io.Clip.Output()
+```
+
+```python Conditioning
+io.Conditioning.Input("conditioning")
+io.Conditioning.Output()
+```
+
+```python Latent
+io.Latent.Input("latent")
+io.Latent.Output()
+```
+</CodeGroup>
+
+## Common Input Parameters
+
+These parameters are available for most input types:
+
+<ParamField path="id" type="string" required>
+  Unique identifier for the input
+</ParamField>
+
+<ParamField path="display_name" type="string">
+  Display name in the UI (defaults to id)
+</ParamField>
+
+<ParamField path="optional" type="bool" default="false">
+  Whether the input is optional
+</ParamField>
+
+<ParamField path="tooltip" type="string">
+  Tooltip text shown on hover
+</ParamField>
+
+<ParamField path="lazy" type="bool">
+  Enable lazy evaluation for this input
+</ParamField>
+
+<ParamField path="default" type="any">
+  Default value for the input
+</ParamField>
+
+<ParamField path="advanced" type="bool">
+  Mark as advanced option (hidden by default)
+</ParamField>
+
+<ParamField path="socketless" type="bool">
+  Hide the connection socket (widget only)
+</ParamField>
+
+<ParamField path="force_input" type="bool">
+  Force input socket even with widget
+</ParamField>
+
+## Enumerations
+
+### NumberDisplay
+
+Display mode for numeric inputs:
+
+```python
+from comfy_api.latest import io
+
+io.NumberDisplay.number    # Standard number input
+io.NumberDisplay.slider    # Slider control
+io.NumberDisplay.gradient_slider  # Gradient slider
+```
+
+### ControlAfterGenerate
+
+Behavior after generation:
+
+```python
+io.ControlAfterGenerate.fixed       # Keep value
+io.ControlAfterGenerate.increment   # Increment value
+io.ControlAfterGenerate.decrement   # Decrement value
+io.ControlAfterGenerate.randomize   # Randomize value
+```
+
+### UploadType
+
+File upload types:
+
+```python
+io.UploadType.image  # Image upload
+io.UploadType.audio  # Audio upload
+io.UploadType.video  # Video upload
+io.UploadType.model  # Generic file upload
+```
+
+### FolderType
+
+Folder location types:
+
+```python
+io.FolderType.input   # Input folder
+io.FolderType.output  # Output folder
+io.FolderType.temp    # Temporary folder
+```
+
+## NodeOutput
+
+Return type for the `execute()` method:
+
+```python
+# Single output
+return io.NodeOutput(result)
+
+# Multiple outputs
+return io.NodeOutput(result1, result2, result3)
+
+# Named outputs
+return io.NodeOutput(
+    image=processed_image,
+    mask=generated_mask
+)
+```
+
+## Extension Class
+
+### ComfyExtension
+
+Base class for extensions:
+
+```python
+from comfy_api.latest import ComfyExtension, io
+from typing_extensions import override
+
+class MyExtension(ComfyExtension):
+    async def on_load(self) -> None:
+        """Called when extension loads"""
+        # Initialize resources
+        pass
+    
+    @override
+    async def get_node_list(self) -> list[type[io.ComfyNode]]:
+        """Return list of nodes"""
+        return [
+            Node1,
+            Node2,
+        ]
+
+async def comfy_entrypoint() -> MyExtension:
+    """Entry point called by ComfyUI"""
+    return MyExtension()
+```
+
+## Custom API Routes
+
+Add custom HTTP endpoints to ComfyUI:
+
+```python
+from aiohttp import web
+from server import PromptServer
+
+@PromptServer.instance.routes.get("/my_endpoint")
+async def my_endpoint(request):
+    return web.json_response({"message": "hello"})
+
+@PromptServer.instance.routes.post("/process_data")
+async def process_data(request):
+    data = await request.json()
+    result = process(data)
+    return web.json_response(result)
+```
+
+## Frontend Extensions
+
+Set the web directory for frontend JavaScript:
+
+```python
+# In your extension file
+WEB_DIRECTORY = "./web"
+```
+
+Any `.js` files in this directory will be loaded by the frontend.
+
+## Type Hints
+
+Common type hints for node development:
+
+```python
+import torch
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from comfy.model_patcher import ModelPatcher
+    from comfy.sd import CLIP, VAE
+    from comfy.controlnet import ControlNet
+
+# Image tensor: [B, H, W, C] with values in [0, 1]
+ImageTensor = torch.Tensor
+
+# Mask tensor: [B, H, W] with values in [0, 1]
+MaskTensor = torch.Tensor
+
+# Latent dict with 'samples' key
+Latent = dict[str, torch.Tensor]
+```
+
+<Note>
+All nodes execute in a class method context. Use `cls` instead of `self` in your methods.
+</Note>

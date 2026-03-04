@@ -1,0 +1,419 @@
+---
+title: Conditioning Nodes
+description: Text encoding and conditioning manipulation nodes
+---
+
+Conditioning nodes convert text prompts into embeddings and manipulate how they guide the image generation process.
+
+## Text Encoding
+
+### CLIPTextEncode
+
+Encodes a text prompt using a CLIP model into an embedding that guides the diffusion model.
+
+**Category**: `conditioning`
+
+<ParamField path="text" type="string" required>
+  The text prompt to encode. Supports multiline and dynamic prompts.
+</ParamField>
+
+<ParamField path="clip" type="CLIP" required>
+  The CLIP model used for encoding the text
+</ParamField>
+
+**Returns**:
+- `CONDITIONING`: The encoded text embedding used to guide the diffusion model
+
+**Description**: Encodes a text prompt using a CLIP model into an embedding that can be used to guide the diffusion model towards generating specific images. This is the primary way to create positive and negative prompts.
+
+### CLIPSetLastLayer
+
+Controls which CLIP layer to use for text encoding.
+
+**Category**: `conditioning`
+
+<ParamField path="clip" type="CLIP" required>
+  The CLIP model to modify
+</ParamField>
+
+<ParamField path="stop_at_clip_layer" type="int" default="-1">
+  Which CLIP layer to stop at. Range: -24 to -1. -1 uses the final layer, -2 uses the second-to-last layer, etc.
+</ParamField>
+
+**Returns**:
+- `CLIP`: The modified CLIP model
+
+**Description**: Different CLIP layers capture different levels of detail. Earlier layers (like -2) sometimes produce better results for certain styles.
+
+## Conditioning Combination
+
+### ConditioningCombine
+
+Combines two conditioning inputs by concatenating them.
+
+**Category**: `conditioning`
+
+<ParamField path="conditioning_1" type="CONDITIONING" required>
+  First conditioning to combine
+</ParamField>
+
+<ParamField path="conditioning_2" type="CONDITIONING" required>
+  Second conditioning to combine
+</ParamField>
+
+**Returns**:
+- `CONDITIONING`: Combined conditioning
+
+**Description**: Merges two conditionings together. Useful for applying multiple prompts or effects to a single generation.
+
+### ConditioningAverage
+
+Blends two conditionings with weighted interpolation.
+
+**Category**: `conditioning`
+
+<ParamField path="conditioning_to" type="CONDITIONING" required>
+  The target conditioning
+</ParamField>
+
+<ParamField path="conditioning_from" type="CONDITIONING" required>
+  The source conditioning to blend in
+</ParamField>
+
+<ParamField path="conditioning_to_strength" type="float" default="1.0">
+  Weight of the target conditioning. Range: 0.0 to 1.0
+</ParamField>
+
+**Returns**:
+- `CONDITIONING`: Blended conditioning
+
+**Description**: Creates a weighted blend between two conditionings. A strength of 1.0 uses only conditioning_to, 0.0 uses only conditioning_from, and 0.5 creates an equal blend.
+
+### ConditioningConcat
+
+Concatenates conditioning tensors along the token dimension.
+
+**Category**: `conditioning`
+
+<ParamField path="conditioning_to" type="CONDITIONING" required>
+  The target conditioning
+</ParamField>
+
+<ParamField path="conditioning_from" type="CONDITIONING" required>
+  The conditioning to concatenate
+</ParamField>
+
+**Returns**:
+- `CONDITIONING`: Concatenated conditioning
+
+## Spatial Conditioning
+
+### ConditioningSetArea
+
+Applies conditioning to a specific rectangular area of the image.
+
+**Category**: `conditioning`
+
+<ParamField path="conditioning" type="CONDITIONING" required>
+  The conditioning to apply to the area
+</ParamField>
+
+<ParamField path="width" type="int" default="64">
+  Width of the area in pixels. Range: 64 to 16384, step 8
+</ParamField>
+
+<ParamField path="height" type="int" default="64">
+  Height of the area in pixels. Range: 64 to 16384, step 8
+</ParamField>
+
+<ParamField path="x" type="int" default="0">
+  X coordinate of the area. Range: 0 to 16384, step 8
+</ParamField>
+
+<ParamField path="y" type="int" default="0">
+  Y coordinate of the area. Range: 0 to 16384, step 8
+</ParamField>
+
+<ParamField path="strength" type="float" default="1.0">
+  Strength of the conditioning in this area. Range: 0.0 to 10.0
+</ParamField>
+
+**Returns**:
+- `CONDITIONING`: Area-modified conditioning
+
+**Description**: Applies a prompt to a specific region of the image. Useful for composing scenes with different prompts in different areas.
+
+### ConditioningSetAreaPercentage
+
+Applies conditioning to an area specified by percentage of image dimensions.
+
+**Category**: `conditioning`
+
+<ParamField path="conditioning" type="CONDITIONING" required>
+  The conditioning to apply
+</ParamField>
+
+<ParamField path="width" type="float" default="1.0">
+  Width as percentage. Range: 0.0 to 1.0
+</ParamField>
+
+<ParamField path="height" type="float" default="1.0">
+  Height as percentage. Range: 0.0 to 1.0
+</ParamField>
+
+<ParamField path="x" type="float" default="0.0">
+  X position as percentage. Range: 0.0 to 1.0
+</ParamField>
+
+<ParamField path="y" type="float" default="0.0">
+  Y position as percentage. Range: 0.0 to 1.0
+</ParamField>
+
+<ParamField path="strength" type="float" default="1.0">
+  Conditioning strength. Range: 0.0 to 10.0
+</ParamField>
+
+**Returns**:
+- `CONDITIONING`: Area-modified conditioning
+
+### ConditioningSetAreaStrength
+
+Sets the strength of an existing area conditioning.
+
+**Category**: `conditioning`
+
+<ParamField path="conditioning" type="CONDITIONING" required>
+  The conditioning to modify
+</ParamField>
+
+<ParamField path="strength" type="float" default="1.0">
+  New strength value. Range: 0.0 to 10.0
+</ParamField>
+
+**Returns**:
+- `CONDITIONING`: Strength-modified conditioning
+
+### ConditioningSetMask
+
+Applies conditioning using a mask to define the region.
+
+**Category**: `conditioning`
+
+<ParamField path="conditioning" type="CONDITIONING" required>
+  The conditioning to apply
+</ParamField>
+
+<ParamField path="mask" type="MASK" required>
+  The mask defining where to apply the conditioning
+</ParamField>
+
+<ParamField path="strength" type="float" default="1.0">
+  Conditioning strength. Range: 0.0 to 10.0
+</ParamField>
+
+<ParamField path="set_cond_area" type="string" default="default">
+  How to handle the conditioning area. Options: `default`, `mask bounds`
+</ParamField>
+
+**Returns**:
+- `CONDITIONING`: Mask-modified conditioning
+
+## Temporal Conditioning
+
+### ConditioningSetTimestepRange
+
+Applies conditioning only during specific timesteps of the sampling process.
+
+**Category**: `advanced/conditioning`
+
+<ParamField path="conditioning" type="CONDITIONING" required>
+  The conditioning to modify
+</ParamField>
+
+<ParamField path="start" type="float" default="0.0">
+  Start of the timestep range. Range: 0.0 to 1.0 (0.0 = beginning of sampling)
+</ParamField>
+
+<ParamField path="end" type="float" default="1.0">
+  End of the timestep range. Range: 0.0 to 1.0 (1.0 = end of sampling)
+</ParamField>
+
+**Returns**:
+- `CONDITIONING`: Timestep-limited conditioning
+
+**Description**: Useful for prompt scheduling, where different prompts apply at different stages of the generation process.
+
+## Advanced Conditioning
+
+### ConditioningZeroOut
+
+Zeros out the conditioning, creating a null/empty conditioning.
+
+**Category**: `advanced/conditioning`
+
+<ParamField path="conditioning" type="CONDITIONING" required>
+  The conditioning to zero out
+</ParamField>
+
+**Returns**:
+- `CONDITIONING`: Zeroed conditioning
+
+**Description**: Creates an empty conditioning. Useful for unconditional generation or as a baseline for certain advanced techniques.
+
+## ControlNet Conditioning
+
+### ControlNetApplyAdvanced
+
+Applies ControlNet guidance to positive and negative conditioning.
+
+**Category**: `conditioning/controlnet`
+
+<ParamField path="positive" type="CONDITIONING" required>
+  Positive conditioning to apply ControlNet to
+</ParamField>
+
+<ParamField path="negative" type="CONDITIONING" required>
+  Negative conditioning to apply ControlNet to
+</ParamField>
+
+<ParamField path="control_net" type="CONTROL_NET" required>
+  The ControlNet model to use
+</ParamField>
+
+<ParamField path="image" type="IMAGE" required>
+  The control image (e.g., edge map, depth map, pose)
+</ParamField>
+
+<ParamField path="strength" type="float" default="1.0">
+  ControlNet influence strength. Range: 0.0 to 10.0
+</ParamField>
+
+<ParamField path="start_percent" type="float" default="0.0">
+  When to start applying ControlNet. Range: 0.0 to 1.0
+</ParamField>
+
+<ParamField path="end_percent" type="float" default="1.0">
+  When to stop applying ControlNet. Range: 0.0 to 1.0
+</ParamField>
+
+<ParamField path="vae" type="VAE" optional>
+  Optional VAE for processing the control image
+</ParamField>
+
+**Returns**:
+- `positive`: ControlNet-modified positive conditioning
+- `negative`: ControlNet-modified negative conditioning
+
+## Vision Conditioning
+
+### CLIPVisionEncode
+
+Encodes an image using CLIP Vision for image-based conditioning.
+
+**Category**: `conditioning`
+
+<ParamField path="clip_vision" type="CLIP_VISION" required>
+  The CLIP Vision model to use
+</ParamField>
+
+<ParamField path="image" type="IMAGE" required>
+  The image to encode
+</ParamField>
+
+<ParamField path="crop" type="string" default="center">
+  How to crop the image. Options: `center`, `none`
+</ParamField>
+
+**Returns**:
+- `CLIP_VISION_OUTPUT`: Encoded image features
+
+### unCLIPConditioning
+
+Applies unCLIP image conditioning to text conditioning.
+
+**Category**: `conditioning`
+
+<ParamField path="conditioning" type="CONDITIONING" required>
+  The text conditioning to enhance
+</ParamField>
+
+<ParamField path="clip_vision_output" type="CLIP_VISION_OUTPUT" required>
+  The encoded image features
+</ParamField>
+
+<ParamField path="strength" type="float" default="1.0">
+  Image conditioning strength. Range: -10.0 to 10.0
+</ParamField>
+
+<ParamField path="noise_augmentation" type="float" default="0.0">
+  Noise added to image embedding. Range: 0.0 to 1.0
+</ParamField>
+
+**Returns**:
+- `CONDITIONING`: Image-conditioned text conditioning
+
+### StyleModelApply
+
+Applies style from a reference image using a style model.
+
+**Category**: `conditioning/style_model`
+
+<ParamField path="conditioning" type="CONDITIONING" required>
+  The conditioning to apply style to
+</ParamField>
+
+<ParamField path="style_model" type="STYLE_MODEL" required>
+  The style model to use
+</ParamField>
+
+<ParamField path="clip_vision_output" type="CLIP_VISION_OUTPUT" required>
+  Encoded features from the style reference image
+</ParamField>
+
+<ParamField path="strength" type="float" default="1.0">
+  Style strength. Range: 0.0 to 10.0
+</ParamField>
+
+<ParamField path="strength_type" type="string" required>
+  How to apply strength. Options: `multiply`, `attn_bias`
+</ParamField>
+
+**Returns**:
+- `CONDITIONING`: Style-modified conditioning
+
+## Inpainting Conditioning
+
+### InpaintModelConditioning
+
+Prepares conditioning for inpainting models.
+
+**Category**: `conditioning/inpaint`
+
+<ParamField path="positive" type="CONDITIONING" required>
+  Positive conditioning
+</ParamField>
+
+<ParamField path="negative" type="CONDITIONING" required>
+  Negative conditioning
+</ParamField>
+
+<ParamField path="vae" type="VAE" required>
+  VAE for encoding the image
+</ParamField>
+
+<ParamField path="pixels" type="IMAGE" required>
+  The image to inpaint
+</ParamField>
+
+<ParamField path="mask" type="MASK" required>
+  The inpainting mask
+</ParamField>
+
+<ParamField path="noise_mask" type="bool" default="true">
+  Add a noise mask to limit sampling to the masked area
+</ParamField>
+
+**Returns**:
+- `positive`: Inpaint-prepared positive conditioning
+- `negative`: Inpaint-prepared negative conditioning
+- `latent`: Prepared latent with mask

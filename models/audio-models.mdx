@@ -1,0 +1,464 @@
+---
+title: Audio Models
+description: Guide to audio generation models in ComfyUI including Stable Audio and ACE Step
+---
+
+ComfyUI supports advanced audio generation models for creating music, sound effects, and voice synthesis.
+
+## Stable Audio
+
+<Info>
+  Stable Audio generates high-quality music and sound effects from text descriptions.
+</Info>
+
+### Architecture
+
+**Model Configuration:**
+- Audio model: dit1.0
+- Latent format: StableAudio1 (64 channels)
+- Sigma range: 0.03 to 500.0
+- Sample rate: 44.1kHz
+
+**Components:**
+- **DiffusionModel**: DiT-based audio generator
+- **VAE**: Audio compression/decompression
+- **Text Encoder**: T5-based (SAT5 variant)
+- **Seconds Embedders**: Start time and duration conditioning
+
+### Text Encoder
+
+**Model:** SAT5 (Stable Audio T5)
+- **Tokenizer**: SAT5Tokenizer
+- **Purpose**: Encodes text prompts for audio generation
+
+### Usage
+
+**Creating Empty Latent:**
+```python
+# Use EmptyLatentAudio node
+seconds = 47.6       # Audio duration (1.0 - 1000.0)
+batch_size = 1       # Number of latents
+# Returns latent: [batch, 64, length]
+# Length = round((seconds * 44100 / 2048) / 2) * 2
+```
+
+**Conditioning:**
+```python
+# Use ConditioningStableAudio node
+seconds_start = 0.0   # Start time in composition
+seconds_total = 47.0  # Total duration
+# Applied to both positive and negative conditioning
+```
+
+**VAE Encoding:**
+```python
+# Use VAEEncodeAudio node
+# Resamples audio to VAE sample rate if needed (default 44.1kHz)
+# Output: latent samples
+```
+
+**VAE Decoding:**
+```python
+# Use VAEDecodeAudio node
+# Standard decoding
+
+# OR use VAEDecodeAudioTiled node for long audio
+tile_size = 512
+overlap = 64
+```
+
+**Latent Dimensions:**
+- Channels: 64
+- Length: Based on duration (44.1kHz / 2048 compression)
+- Device: Intermediate device (for memory efficiency)
+
+### Audio Workflow Nodes
+
+**Loading Audio:**
+```python
+# Use LoadAudio node
+# Supports: audio files and video files
+# Extracts waveform and sample rate
+# Returns: {"waveform": tensor, "sample_rate": int}
+```
+
+**Recording Audio:**
+```python
+# Use RecordAudio node
+# Live microphone input
+# Returns same format as LoadAudio
+```
+
+**Saving Audio:**
+
+*FLAC (Lossless):*
+```python
+# Use SaveAudio node
+filename_prefix = "audio/ComfyUI"
+format = "flac"
+```
+
+*MP3 (Compressed):*
+```python
+# Use SaveAudioMP3 node
+quality = "V0"  # Options: V0, 128k, 320k
+```
+
+*Opus (Web):*
+```python  
+# Use SaveAudioOpus node
+quality = "128k"  # Options: 64k, 96k, 128k, 192k, 320k
+```
+
+**Previewing Audio:**
+```python
+# Use PreviewAudio node
+# Plays audio in the UI
+```
+
+### Audio Processing
+
+**Trimming:**
+```python
+# Use TrimAudioDuration node
+start_index = 0.0     # Start time (seconds, can be negative)
+duration = 60.0       # Duration to keep
+# Negative start_index counts from end
+```
+
+**Channel Operations:**
+
+*Splitting Stereo:*
+```python
+# Use SplitAudioChannels node
+# Input: stereo audio
+# Output: left channel, right channel (both mono)
+```
+
+*Joining to Stereo:*
+```python
+# Use JoinAudioChannels node  
+# Input: audio_left (mono), audio_right (mono)
+# Output: stereo audio
+# Auto-resamples if different sample rates
+# Auto-trims to shorter length
+```
+
+**Concatenation:**
+```python
+# Use AudioConcat node
+audio1 = first_audio
+audio2 = second_audio
+direction = "after"  # or "before"
+# Auto-converts mono to stereo
+# Auto-resamples to match sample rates
+```
+
+**Merging/Mixing:**
+```python
+# Use AudioMerge node
+merge_method = "add"  # Options: add, mean, subtract, multiply
+# Overlays two audio tracks
+# Auto-normalizes to prevent clipping
+```
+
+**Volume Adjustment:**
+```python
+# Use AudioAdjustVolume node
+volume = 6   # Decibels (+6 = 2x, -6 = 0.5x, 0 = no change)
+# Gain calculation: 10^(volume/20)
+```
+
+**Equalization (Experimental):**
+```python
+# Use AudioEqualizer3Band node
+low_gain_dB = 0.0      # Bass boost/cut
+low_freq = 100         # Low shelf cutoff
+mid_gain_dB = 0.0      # Mid boost/cut
+mid_freq = 1000        # Mid center frequency
+mid_q = 0.707          # Mid bandwidth
+high_gain_dB = 0.0     # Treble boost/cut  
+high_freq = 5000       # High shelf cutoff
+```
+
+**Creating Empty Audio:**
+```python
+# Use EmptyAudio node
+duration = 60.0        # Seconds
+sample_rate = 44100
+channels = 2           # 1 = mono, 2 = stereo
+# Returns silent audio tensor
+```
+
+### Model Files Location
+
+```
+ComfyUI/
+├── models/
+│   ├── checkpoints/
+│   │   └── stable_audio/
+│   │       └── stable_audio_open_1.0.safetensors
+│   ├── vae/
+│   │   └── stable_audio_vae.safetensors
+│   └── text_encoders/
+│       └── sat5_base.safetensors
+```
+
+### Examples
+
+- [Stable Audio Workflows](https://comfyanonymous.github.io/ComfyUI_examples/audio/)
+
+---
+
+## ACE Step
+
+<Tip>
+  ACE Step specializes in music generation with lyrics, tags, and musical structure control.
+</Tip>
+
+### Architecture
+
+**Model Configuration:**
+- Audio model: ace
+- Latent format: ACEAudio
+- Shift: 3.0
+- Memory usage factor: 0.5
+- Supported dtypes: BF16, FP32
+- Sample rate: 44.1kHz (ACE Step 1.0) or 48kHz (ACE Step 1.5)
+
+### ACE Step 1.0
+
+**Text Encoder:**
+- Custom ACE T5 model
+- **Tokenizer**: AceT5Tokenizer
+
+**Latent Format:**
+- Shape: [batch, 8, 16, length]
+- Length: int(seconds * 44100 / 512 / 8)
+
+**Text Encoding:**
+```python
+# Use TextEncodeAceStepAudio node
+tags = "electronic, upbeat, synthwave"  # Music tags
+lyrics = "..."                          # Song lyrics
+lyrics_strength = 1.0                   # How strongly to follow lyrics
+```
+
+**Empty Latent:**
+```python  
+# Use EmptyAceStepLatentAudio node
+seconds = 120.0
+batch_size = 1
+# Returns: {"samples": latent, "type": "audio"}
+```
+
+### ACE Step 1.5
+
+**Enhanced Features:**
+- Higher sample rate (48kHz)
+- More musical controls
+- Audio reference support
+- LLM-based audio code generation
+
+**Latent Format:**
+- Shape: [batch, 64, length]
+- Length: round(seconds * 48000 / 1920)
+
+**Text Encoding:**
+```python
+# Use TextEncodeAceStepAudio1.5 node
+tags = "jazz, piano, relaxing"
+lyrics = "..."
+seed = 0                         # For reproducibility
+bpm = 120                        # Beats per minute (10-300)
+duration = 120.0                 # Song duration
+timesignature = "4"              # Options: 2, 3, 4, 6
+language = "en"                  # Language code
+keyscale = "C major"             # Musical key
+generate_audio_codes = True      # Enable LLM (slower but higher quality)
+cfg_scale = 2.0                  # Guidance scale
+temperature = 0.85               # Sampling temperature
+top_p = 0.9                      # Nucleus sampling
+top_k = 0                        # Top-k sampling (0 = disabled)
+min_p = 0.000                    # Minimum probability
+```
+
+**Available Languages:**
+- en (English), ja (Japanese), zh (Chinese), es (Spanish)
+- de (German), fr (French), pt (Portuguese), ru (Russian)
+- it (Italian), nl (Dutch), pl (Polish), tr (Turkish)
+- vi (Vietnamese), cs (Czech), fa (Persian), id (Indonesian)
+- ko (Korean), uk (Ukrainian), hu (Hungarian), ar (Arabic)
+- sv (Swedish), ro (Romanian), el (Greek)
+
+**Key Scales:**
+- All major and minor keys
+- Format: "[C/C#/D/Eb/E/F/F#/G/Ab/A/Bb/B] [major/minor]"
+
+**Empty Latent:**
+```python
+# Use EmptyAceStep1.5LatentAudio node
+seconds = 120.0
+batch_size = 1
+```
+
+**Reference Audio (Experimental):**
+```python
+# Use ReferenceTimbreAudio node
+conditioning = positive_conditioning
+latent = reference_audio_latent  # Optional
+# Sets timbre reference for generation
+# Turn off generate_audio_codes when using references
+```
+
+### Usage Tips
+
+**ACE Step 1.0:**
+1. Use descriptive tags (genre, mood, instruments)
+2. Lyrics are optional but improve structure
+3. Adjust lyrics_strength to balance music vs. vocals
+
+**ACE Step 1.5:**
+1. Set BPM and time signature for rhythmic coherence
+2. Choose appropriate key scale for mood
+3. Enable generate_audio_codes for best quality
+4. Disable audio codes when using reference audio
+5. Adjust temperature for more/less variation
+6. Use CFG scale to control prompt adherence
+
+### Model Files Location
+
+```
+ComfyUI/
+├── models/
+│   ├── checkpoints/
+│   │   └── ace_step/
+│   │       ├── ace_step_1.0.safetensors
+│   │       └── ace_step_1.5.safetensors
+│   ├── vae/
+│   │   └── ace_step_vae.safetensors
+│   └── text_encoders/
+│       └── ace_t5.safetensors
+```
+
+### Examples
+
+- [ACE Step Workflows](https://comfyanonymous.github.io/ComfyUI_examples/audio/)
+
+---
+
+## Audio Format Details
+
+### Waveform Tensor Format
+
+**Structure:**
+```python
+{
+    "waveform": torch.Tensor,  # Shape: [batch, channels, samples]
+    "sample_rate": int         # Samples per second
+}
+```
+
+**Channel Layouts:**
+- **Mono**: channels = 1
+- **Stereo**: channels = 2
+
+**Sample Rates:**
+- **44.1kHz**: Standard audio CD quality (Stable Audio, ACE 1.0)
+- **48kHz**: Professional audio standard (ACE 1.5)
+
+### Latent Compression
+
+**Stable Audio:**
+- Temporal compression: ~2048x (44.1kHz → ~21.5Hz latent rate)
+- Channel expansion: 1-2 channels → 64 latent channels
+
+**ACE Step 1.0:**
+- Temporal compression: 512 * 8 = 4096x
+- Spatial/channel layout: [8, 16, length]
+
+**ACE Step 1.5:**
+- Temporal compression: 1920x (48kHz → 25Hz latent rate)  
+- Channel expansion: 1-2 channels → 64 latent channels
+
+---
+
+## Performance Optimization
+
+### Memory Management
+
+**For Long Audio:**
+- Use `VAEDecodeAudioTiled` instead of `VAEDecodeAudio`
+- Adjust tile_size and overlap based on VRAM
+- Typical settings: tile_size=512, overlap=64
+
+**VRAM Requirements:**
+- Stable Audio (47 seconds): ~4-6GB
+- ACE Step 1.0 (120 seconds): ~6-8GB  
+- ACE Step 1.5 (120 seconds): ~8-10GB
+
+### Speed Optimization
+
+**Preprocessing:**
+- Use FP16/BF16 for VAE when possible
+- Enable `--fp16-vae` flag
+
+**Generation:**
+- Start with shorter durations for testing
+- Use fewer sampling steps initially
+- ACE 1.5: Disable generate_audio_codes for faster preview
+
+### Quality Settings
+
+**Export Formats:**
+
+*Highest Quality:*
+- FLAC lossless
+- Full sample rate (44.1/48kHz)
+
+*Balanced:*
+- MP3 V0 (variable bitrate, ~245kbps)
+- Opus 192k
+
+*Streaming:*
+- MP3 128k
+- Opus 96k or 128k
+
+**Normalization:**
+- ComfyUI automatically normalizes audio to prevent clipping
+- Output is divided by std * 5.0 (capped at 1.0)
+
+---
+
+## Advanced Workflows
+
+### Music Production Pipeline
+
+1. **Generate base track** (ACE Step with tags and BPM)
+2. **Trim to exact length** (TrimAudioDuration)
+3. **Adjust levels** (AudioAdjustVolume)
+4. **Apply EQ** (AudioEqualizer3Band)
+5. **Export** (SaveAudio with FLAC or high-quality MP3)
+
+### Sound Design
+
+1. **Generate variations** (batch_size > 1)
+2. **Mix multiple outputs** (AudioMerge with "add" or "mean")
+3. **Layer effects** (AudioConcat)
+4. **Process channels separately** (SplitAudioChannels → process → JoinAudioChannels)
+
+### Podcast/Voice Workflow
+
+1. **Record or load voice** (RecordAudio or LoadAudio)
+2. **Trim silence** (TrimAudioDuration)
+3. **Normalize volume** (AudioAdjustVolume)
+4. **Add music bed** (ACE Step + AudioMerge)
+5. **Export for web** (SaveAudioOpus)
+
+---
+
+## Resources
+
+- [Audio Examples](https://comfyanonymous.github.io/ComfyUI_examples/audio/)
+- [Stable Audio Documentation](https://stability.ai/stable-audio)
+- [ComfyUI Audio Wiki](https://github.com/comfyanonymous/ComfyUI/wiki)

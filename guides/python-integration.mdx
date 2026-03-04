@@ -1,0 +1,301 @@
+---
+title: Using ComfyUI from Python
+description: Learn how to integrate ComfyUI into your Python applications using the API
+---
+
+ComfyUI provides a REST API that allows you to programmatically queue prompts and retrieve generated images. This guide shows you how to use ComfyUI from Python applications.
+
+## Basic API Usage
+
+The simplest way to use ComfyUI from Python is through HTTP requests to the API endpoint.
+
+### Queuing a Prompt
+
+Here's a minimal example of how to queue a workflow for execution:
+
+```python basic_api_example.py
+import json
+from urllib import request
+
+def queue_prompt(prompt):
+    p = {"prompt": prompt}
+    data = json.dumps(p).encode('utf-8')
+    req = request.Request("http://127.0.0.1:8188/prompt", data=data)
+    request.urlopen(req)
+
+# Load your workflow (this is the API format)
+prompt_text = """
+{
+    "3": {
+        "class_type": "KSampler",
+        "inputs": {
+            "cfg": 8,
+            "denoise": 1,
+            "latent_image": ["5", 0],
+            "model": ["4", 0],
+            "negative": ["7", 0],
+            "positive": ["6", 0],
+            "sampler_name": "euler",
+            "scheduler": "normal",
+            "seed": 8566257,
+            "steps": 20
+        }
+    },
+    "4": {
+        "class_type": "CheckpointLoaderSimple",
+        "inputs": {
+            "ckpt_name": "v1-5-pruned-emaonly.safetensors"
+        }
+    },
+    "5": {
+        "class_type": "EmptyLatentImage",
+        "inputs": {
+            "batch_size": 1,
+            "height": 512,
+            "width": 512
+        }
+    },
+    "6": {
+        "class_type": "CLIPTextEncode",
+        "inputs": {
+            "clip": ["4", 1],
+            "text": "masterpiece best quality girl"
+        }
+    },
+    "7": {
+        "class_type": "CLIPTextEncode",
+        "inputs": {
+            "clip": ["4", 1],
+            "text": "bad hands"
+        }
+    },
+    "8": {
+        "class_type": "VAEDecode",
+        "inputs": {
+            "samples": ["3", 0],
+            "vae": ["4", 2]
+        }
+    },
+    "9": {
+        "class_type": "SaveImage",
+        "inputs": {
+            "filename_prefix": "ComfyUI",
+            "images": ["8", 0]
+        }
+    }
+}
+"""
+
+prompt = json.loads(prompt_text)
+
+# Modify the prompt parameters
+prompt["6"]["inputs"]["text"] = "masterpiece best quality man"
+prompt["3"]["inputs"]["seed"] = 5
+
+# Queue the prompt
+queue_prompt(prompt)
+```
+
+<Note>
+To get the API format for your workflow, use **File → Export (API)** in the ComfyUI interface.
+</Note>
+
+## WebSocket API with Image Retrieval
+
+For production use cases where you need to know when execution is complete and retrieve the generated images, use the WebSocket API:
+
+```python websocket_example.py
+import websocket  # pip install websocket-client
+import uuid
+import json
+import urllib.request
+import urllib.parse
+
+server_address = "127.0.0.1:8188"
+client_id = str(uuid.uuid4())
+
+def queue_prompt(prompt, prompt_id):
+    p = {"prompt": prompt, "client_id": client_id, "prompt_id": prompt_id}
+    data = json.dumps(p).encode('utf-8')
+    req = urllib.request.Request(f"http://{server_address}/prompt", data=data)
+    urllib.request.urlopen(req).read()
+
+def get_image(filename, subfolder, folder_type):
+    data = {"filename": filename, "subfolder": subfolder, "type": folder_type}
+    url_values = urllib.parse.urlencode(data)
+    with urllib.request.urlopen(f"http://{server_address}/view?{url_values}") as response:
+        return response.read()
+
+def get_history(prompt_id):
+    with urllib.request.urlopen(f"http://{server_address}/history/{prompt_id}") as response:
+        return json.loads(response.read())
+
+def get_images(ws, prompt):
+    prompt_id = str(uuid.uuid4())
+    queue_prompt(prompt, prompt_id)
+    output_images = {}
+    
+    # Wait for execution to complete
+    while True:
+        out = ws.recv()
+        if isinstance(out, str):
+            message = json.loads(out)
+            if message['type'] == 'executing':
+                data = message['data']
+                if data['node'] is None and data['prompt_id'] == prompt_id:
+                    break  # Execution is done
+        else:
+            continue  # previews are binary data
+    
+    # Retrieve the generated images
+    history = get_history(prompt_id)[prompt_id]
+    for node_id in history['outputs']:
+        node_output = history['outputs'][node_id]
+        images_output = []
+        if 'images' in node_output:
+            for image in node_output['images']:
+                image_data = get_image(image['filename'], image['subfolder'], image['type'])
+                images_output.append(image_data)
+        output_images[node_id] = images_output
+    
+    return output_images
+
+# Connect to WebSocket
+ws = websocket.WebSocket()
+ws.connect(f"ws://{server_address}/ws?clientId={client_id}")
+
+# Execute your prompt
+images = get_images(ws, prompt)
+
+# Close the connection
+ws.close()
+
+# Display the images
+for node_id in images:
+    for image_data in images[node_id]:
+        from PIL import Image
+        import io
+        image = Image.open(io.BytesIO(image_data))
+        image.show()
+```
+
+## Using Comfy API Keys
+
+If your workflow uses API nodes that connect to external services, you can provide your Comfy API key:
+
+```python
+def queue_prompt(prompt):
+    p = {
+        "prompt": prompt,
+        "extra_data": {
+            "api_key_comfy_org": "comfyui-87d01e28d..."
+        }
+    }
+    data = json.dumps(p).encode('utf-8')
+    req = request.Request("http://127.0.0.1:8188/prompt", data=data)
+    request.urlopen(req)
+```
+
+<Card title="Learn More" icon="book" href="https://docs.comfy.org/tutorials/api-nodes/overview">
+  Read the full API nodes documentation
+</Card>
+
+<Warning>
+Generate your API key at [platform.comfy.org](https://platform.comfy.org/login) and keep it secure.
+</Warning>
+
+## API Endpoints
+
+ComfyUI exposes several useful endpoints:
+
+<AccordionGroup>
+  <Accordion title="POST /prompt">
+    Queue a workflow for execution.
+    
+    **Request body:**
+    ```json
+    {
+      "prompt": { /* workflow object */ },
+      "client_id": "unique-client-id",
+      "extra_data": { /* optional */ }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="GET /history/{prompt_id}">
+    Retrieve execution history and outputs for a specific prompt.
+    
+    **Returns:** JSON object with execution details and output file references.
+  </Accordion>
+
+  <Accordion title="GET /view">
+    Download a generated image or file.
+    
+    **Query parameters:**
+    - `filename`: Name of the file
+    - `subfolder`: Subfolder path
+    - `type`: File type (e.g., "output", "temp")
+  </Accordion>
+
+  <Accordion title="WebSocket /ws">
+    Real-time execution updates.
+    
+    **Query parameters:**
+    - `clientId`: Unique client identifier
+    
+    **Events:**
+    - `executing`: Node execution status
+    - `progress`: Generation progress updates
+    - Preview images (binary data)
+  </Accordion>
+</AccordionGroup>
+
+## Exporting Workflows
+
+To get the API format of your workflow:
+
+<Steps>
+  <Step title="Design your workflow">
+    Create and test your workflow in the ComfyUI web interface.
+  </Step>
+  
+  <Step title="Export as API">
+    Go to **File → Export (API)** to get the JSON format.
+  </Step>
+  
+  <Step title="Use in Python">
+    Load the JSON and modify parameters as needed before queuing.
+  </Step>
+</Steps>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use WebSockets" icon="link">
+    Always use WebSocket connections in production to track execution status and handle errors properly.
+  </Card>
+  
+  <Card title="Handle Errors" icon="triangle-exclamation">
+    Implement proper error handling for network failures and execution errors.
+  </Card>
+  
+  <Card title="Manage Resources" icon="memory">
+    Close WebSocket connections when done to avoid connection timeouts.
+  </Card>
+  
+  <Card title="Unique IDs" icon="fingerprint">
+    Always use unique prompt IDs to avoid conflicts with concurrent requests.
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Headless Mode" icon="server" href="/guides/headless-mode">
+    Learn how to run ComfyUI without the web interface
+  </Card>
+  
+  <Card title="Docker Deployment" icon="docker" href="/guides/docker">
+    Deploy ComfyUI in containers for production
+  </Card>
+</CardGroup>

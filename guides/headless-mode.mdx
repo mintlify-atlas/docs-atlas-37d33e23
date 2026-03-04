@@ -1,0 +1,442 @@
+---
+title: Running ComfyUI Headless
+description: Configure and run ComfyUI as a headless server without the web interface
+---
+
+ComfyUI can be run as a headless server for production environments where the web interface is not needed. This guide covers the command-line options and configurations for running ComfyUI in headless mode.
+
+## Basic Headless Setup
+
+To run ComfyUI as a headless server:
+
+```bash
+python main.py --listen 0.0.0.0 --port 8188
+```
+
+<Note>
+By default, ComfyUI only listens on `127.0.0.1` (localhost). Use `--listen 0.0.0.0` to accept external connections.
+</Note>
+
+## Essential Command-Line Options
+
+### Network Configuration
+
+<ParamField path="--listen" type="string" default="127.0.0.1">
+  IP address to listen on. Use `0.0.0.0` for all IPv4 interfaces or `0.0.0.0,::` for both IPv4 and IPv6.
+  
+  ```bash
+  # Listen on all interfaces
+  python main.py --listen 0.0.0.0
+  
+  # Listen on specific IP
+  python main.py --listen 192.168.1.100
+  
+  # Listen on multiple IPs
+  python main.py --listen 127.0.0.1,192.168.1.100
+  ```
+</ParamField>
+
+<ParamField path="--port" type="integer" default="8188">
+  Set the listen port.
+  
+  ```bash
+  python main.py --port 8080
+  ```
+</ParamField>
+
+<ParamField path="--dont-print-server" type="boolean">
+  Suppress server output logs.
+  
+  ```bash
+  python main.py --dont-print-server
+  ```
+</ParamField>
+
+### Security Options
+
+<ParamField path="--tls-keyfile" type="string">
+  Path to TLS key file for HTTPS support.
+  
+  ```bash
+  python main.py --tls-keyfile key.pem --tls-certfile cert.pem
+  ```
+</ParamField>
+
+<ParamField path="--tls-certfile" type="string">
+  Path to TLS certificate file for HTTPS support.
+</ParamField>
+
+<ParamField path="--enable-cors-header" type="string">
+  Enable CORS with optional origin. Use `*` to allow all origins.
+  
+  ```bash
+  # Allow all origins
+  python main.py --enable-cors-header
+  
+  # Allow specific origin
+  python main.py --enable-cors-header https://example.com
+  ```
+</ParamField>
+
+<ParamField path="--max-upload-size" type="float" default="100">
+  Maximum upload size in MB.
+  
+  ```bash
+  python main.py --max-upload-size 500
+  ```
+</ParamField>
+
+### Directory Configuration
+
+<ParamField path="--base-directory" type="string">
+  Set the ComfyUI base directory for all subdirectories (models, custom_nodes, input, output, temp, user).
+  
+  ```bash
+  python main.py --base-directory /data/comfyui
+  ```
+</ParamField>
+
+<ParamField path="--output-directory" type="string">
+  Set the output directory. Overrides `--base-directory`.
+  
+  ```bash
+  python main.py --output-directory /mnt/outputs
+  ```
+</ParamField>
+
+<ParamField path="--input-directory" type="string">
+  Set the input directory. Overrides `--base-directory`.
+</ParamField>
+
+<ParamField path="--temp-directory" type="string">
+  Set the temp directory. Overrides `--base-directory`.
+</ParamField>
+
+<ParamField path="--user-directory" type="string">
+  Set the user directory. Overrides `--base-directory`.
+</ParamField>
+
+<ParamField path="--extra-model-paths-config" type="string">
+  Load additional model path configuration files.
+  
+  ```bash
+  python main.py --extra-model-paths-config /path/to/config.yaml
+  ```
+</ParamField>
+
+## GPU and Performance Options
+
+### VRAM Management
+
+<CodeGroup>
+```bash GPU Only
+# Keep everything on GPU
+python main.py --gpu-only
+```
+
+```bash High VRAM
+# Keep models in GPU memory after use
+python main.py --highvram
+```
+
+```bash Normal VRAM
+# Default behavior (force if lowvram auto-enables)
+python main.py --normalvram
+```
+
+```bash Low VRAM
+# Split models to use less VRAM
+python main.py --lowvram
+```
+
+```bash No VRAM
+# For extremely low VRAM situations
+python main.py --novram
+```
+
+```bash CPU Only
+# Run everything on CPU (slow)
+python main.py --cpu
+```
+</CodeGroup>
+
+<ParamField path="--reserve-vram" type="float">
+  Reserve VRAM in GB for OS/other software.
+  
+  ```bash
+  python main.py --reserve-vram 2.0
+  ```
+</ParamField>
+
+### GPU Selection
+
+<ParamField path="--cuda-device" type="integer">
+  Set CUDA device ID. Other devices will be hidden.
+  
+  ```bash
+  python main.py --cuda-device 0
+  ```
+</ParamField>
+
+<ParamField path="--default-device" type="integer">
+  Set default device ID while keeping other devices visible.
+</ParamField>
+
+### Precision Options
+
+<CodeGroup>
+```bash Force FP32
+python main.py --force-fp32
+```
+
+```bash Force FP16
+python main.py --force-fp16
+```
+
+```bash FP16 VAE
+python main.py --fp16-vae
+```
+
+```bash FP32 VAE
+python main.py --fp32-vae
+```
+
+```bash BF16 UNet
+python main.py --bf16-unet
+```
+</CodeGroup>
+
+### Attention Mechanisms
+
+<CodeGroup>
+```bash PyTorch Attention
+python main.py --use-pytorch-cross-attention
+```
+
+```bash Split Attention
+python main.py --use-split-cross-attention
+```
+
+```bash Quad Attention
+python main.py --use-quad-cross-attention
+```
+
+```bash Sage Attention
+python main.py --use-sage-attention
+```
+
+```bash Flash Attention
+python main.py --use-flash-attention
+```
+</CodeGroup>
+
+## Caching Options
+
+<Tabs>
+  <Tab title="Classic Cache">
+    ```bash
+    python main.py --cache-classic
+    ```
+    Old style aggressive caching (default behavior).
+  </Tab>
+  
+  <Tab title="LRU Cache">
+    ```bash
+    python main.py --cache-lru 10
+    ```
+    Use LRU caching with maximum N node results cached. May use more RAM/VRAM.
+  </Tab>
+  
+  <Tab title="RAM Pressure">
+    ```bash
+    python main.py --cache-ram 4.0
+    ```
+    Use RAM pressure caching with 4GB headroom threshold.
+  </Tab>
+  
+  <Tab title="No Cache">
+    ```bash
+    python main.py --cache-none
+    ```
+    Reduced RAM/VRAM usage at the expense of executing every node each run.
+  </Tab>
+</Tabs>
+
+## Custom Nodes and Extensions
+
+<ParamField path="--disable-all-custom-nodes" type="boolean">
+  Disable loading all custom nodes.
+  
+  ```bash
+  python main.py --disable-all-custom-nodes
+  ```
+</ParamField>
+
+<ParamField path="--whitelist-custom-nodes" type="string[]">
+  Specify custom node folders to load even when `--disable-all-custom-nodes` is enabled.
+  
+  ```bash
+  python main.py --disable-all-custom-nodes --whitelist-custom-nodes node1 node2
+  ```
+</ParamField>
+
+<ParamField path="--disable-api-nodes" type="boolean">
+  Disable API nodes that communicate with external services.
+  
+  ```bash
+  python main.py --disable-api-nodes
+  ```
+</ParamField>
+
+## Logging and Debugging
+
+<ParamField path="--verbose" type="string" default="INFO">
+  Set logging level: DEBUG, INFO, WARNING, ERROR, or CRITICAL.
+  
+  ```bash
+  python main.py --verbose DEBUG
+  ```
+</ParamField>
+
+<ParamField path="--log-stdout" type="boolean">
+  Send process output to stdout instead of stderr.
+  
+  ```bash
+  python main.py --log-stdout
+  ```
+</ParamField>
+
+## Multi-User Mode
+
+<ParamField path="--multi-user" type="boolean">
+  Enable per-user storage for multi-tenant environments.
+  
+  ```bash
+  python main.py --multi-user
+  ```
+</ParamField>
+
+## Preview Options
+
+<ParamField path="--preview-method" type="enum" default="none">
+  Default preview method: `none`, `auto`, `latent2rgb`, or `taesd`.
+  
+  ```bash
+  python main.py --preview-method taesd
+  ```
+</ParamField>
+
+<ParamField path="--preview-size" type="integer" default="512">
+  Maximum preview size for sampler nodes.
+  
+  ```bash
+  python main.py --preview-size 1024
+  ```
+</ParamField>
+
+## Production Example
+
+Here's a complete example for a production headless server:
+
+```bash production_server.sh
+#!/bin/bash
+
+python main.py \
+  --listen 0.0.0.0 \
+  --port 8188 \
+  --output-directory /data/outputs \
+  --temp-directory /data/temp \
+  --extra-model-paths-config /etc/comfyui/models.yaml \
+  --highvram \
+  --preview-method taesd \
+  --disable-all-custom-nodes \
+  --whitelist-custom-nodes essential-nodes \
+  --verbose INFO \
+  --enable-cors-header \
+  --cache-lru 5
+```
+
+<Warning>
+Always configure proper firewall rules when running with `--listen 0.0.0.0` to prevent unauthorized access.
+</Warning>
+
+## Platform-Specific Options
+
+### AMD GPUs (ROCm)
+
+```bash
+# Linux with ROCm
+TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1 python main.py --use-pytorch-cross-attention
+
+# Enable tunable ops (slow first run)
+PYTORCH_TUNABLEOP_ENABLED=1 python main.py
+
+# For unsupported cards
+HSA_OVERRIDE_GFX_VERSION=10.3.0 python main.py  # RDNA2 (6700, 6600)
+HSA_OVERRIDE_GFX_VERSION=11.0.0 python main.py  # RDNA3 (7600)
+```
+
+### Intel GPUs
+
+```bash
+python main.py --oneapi-device-selector level_zero:0
+```
+
+### DirectML (Windows)
+
+```bash
+python main.py --directml 0
+```
+
+## Memory Optimizations
+
+<CardGroup cols={2}>
+  <Card title="Dynamic VRAM" icon="microchip">
+    ```bash
+    # Enabled by default on NVIDIA
+    python main.py
+    
+    # Force disable
+    python main.py --disable-dynamic-vram
+    ```
+  </Card>
+  
+  <Card title="Async Offload" icon="arrows-rotate">
+    ```bash
+    # Use async weight offloading (2 streams)
+    python main.py --async-offload
+    
+    # Custom stream count
+    python main.py --async-offload 4
+    
+    # Disable
+    python main.py --disable-async-offload
+    ```
+  </Card>
+  
+  <Card title="Smart Memory" icon="brain">
+    ```bash
+    # Disable smart memory (aggressive offload)
+    python main.py --disable-smart-memory
+    ```
+  </Card>
+  
+  <Card title="Pinned Memory" icon="thumbtack">
+    ```bash
+    # Disable pinned memory
+    python main.py --disable-pinned-memory
+    ```
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Python Integration" icon="python" href="/guides/python-integration">
+    Learn how to integrate ComfyUI into Python applications
+  </Card>
+  
+  <Card title="Docker Deployment" icon="docker" href="/guides/docker">
+    Deploy ComfyUI using containers
+  </Card>
+</CardGroup>

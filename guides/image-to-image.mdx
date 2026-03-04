@@ -1,0 +1,339 @@
+---
+title: Image-to-Image Generation
+description: Transform existing images using Stable Diffusion in ComfyUI
+---
+
+Image-to-image (img2img) lets you use an existing image as a starting point, allowing you to modify, enhance, or completely transform it while preserving certain characteristics.
+
+## How It Works
+
+Instead of starting from pure noise, img2img:
+1. Encodes your input image to latent space
+2. Adds controlled noise (determined by denoise strength)
+3. Denoises using your prompt as guidance
+4. Decodes back to pixel space
+
+The **denoise** parameter controls how much the image changes:
+- **0.0**: No change (original image)
+- **0.3-0.5**: Subtle modifications, preserves composition
+- **0.6-0.8**: Significant changes, keeps general structure
+- **0.9-1.0**: Major transformation, minimal original influence
+
+## Basic Workflow
+
+<Steps>
+
+### Load your image
+
+1. Add a **LoadImage** node
+2. Upload or select your source image
+3. The node outputs:
+   - **IMAGE**: The loaded image
+   - **MASK**: Alpha channel (if present)
+
+### Encode to latent space
+
+1. Add **VAEEncode** node
+2. Connect:
+   - **pixels**: from LoadImage IMAGE output
+   - **vae**: from CheckpointLoaderSimple VAE output
+
+This converts your image into the latent representation the model understands.
+
+### Set up your prompts
+
+1. Add **CheckpointLoaderSimple** to load your model
+2. Add two **CLIPTextEncode** nodes for positive and negative prompts
+3. Connect CLIP from checkpoint to both
+
+**Example for style transfer**:
+- Positive: `oil painting style, impressionist brushstrokes, vibrant colors`
+- Negative: `photorealistic, sharp edges, digital`
+
+### Configure the sampler
+
+1. Add **KSampler** node
+2. Make connections:
+   - **model**: from checkpoint
+   - **positive**: from positive prompt
+   - **negative**: from negative prompt
+   - **latent_image**: from VAEEncode
+3. Set parameters:
+   - **denoise**: 0.5-0.75 (key parameter for img2img)
+   - **steps**: 20-30
+   - **cfg**: 7-9
+   - **sampler_name**: euler or dpm++ 2m karras
+
+### Decode and save
+
+1. Add **VAEDecode**: samples from KSampler, vae from checkpoint
+2. Add **SaveImage**: images from VAEDecode
+3. Generate with **Ctrl+Enter**
+
+</Steps>
+
+## Complete Workflow JSON
+
+```json
+{
+  "load_image": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "example.png"
+    }
+  },
+  "checkpoint": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "v1-5-pruned-emaonly.safetensors"
+    }
+  },
+  "vae_encode": {
+    "class_type": "VAEEncode",
+    "inputs": {
+      "pixels": ["load_image", 0],
+      "vae": ["checkpoint", 2]
+    }
+  },
+  "positive": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": ["checkpoint", 1],
+      "text": "watercolor painting, soft colors, artistic"
+    }
+  },
+  "negative": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": ["checkpoint", 1],
+      "text": "blurry, distorted, low quality"
+    }
+  },
+  "sampler": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": ["checkpoint", 0],
+      "positive": ["positive", 0],
+      "negative": ["negative", 0],
+      "latent_image": ["vae_encode", 0],
+      "seed": 12345,
+      "steps": 25,
+      "cfg": 7.5,
+      "sampler_name": "dpm++ 2m karras",
+      "scheduler": "karras",
+      "denoise": 0.65
+    }
+  },
+  "vae_decode": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["sampler", 0],
+      "vae": ["checkpoint", 2]
+    }
+  },
+  "save": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": ["vae_decode", 0],
+      "filename_prefix": "img2img"
+    }
+  }
+}
+```
+
+## Common Use Cases
+
+### Style Transfer
+
+**Goal**: Change artistic style while preserving content
+
+**Settings**:
+- Denoise: 0.5-0.7
+- Prompt: Describe target style in detail
+- CFG: 8-10 for strong style application
+
+**Example**:
+```
+Positive: "anime style, cel shaded, vibrant colors, studio ghibli"
+Negative: "realistic, photographic, 3d render"
+```
+
+### Upscaling and Enhancement
+
+**Goal**: Increase resolution and add detail
+
+1. Add **ImageScale** node before VAEEncode
+2. Set target dimensions (e.g., 2x original)
+3. Use low denoise (0.3-0.5)
+4. Prompt for enhanced details:
+
+```
+Positive: "high resolution, sharp focus, detailed, 8k, masterpiece"
+Denoise: 0.4
+```
+
+### Sketch to Image
+
+**Goal**: Turn rough sketches into detailed images
+
+**Settings**:
+- Denoise: 0.7-0.9 (high transformation)
+- Detailed descriptive prompt
+- Higher CFG (9-12)
+
+**Example**:
+```
+Positive: "professional character concept art, full color, detailed shading, 
+fantasy armor, dramatic lighting"
+Denoise: 0.85
+```
+
+### Photo Restoration
+
+**Goal**: Restore old or damaged photos
+
+**Settings**:
+- Denoise: 0.3-0.5 (preserve original)
+- Steps: 30-40
+- Sampler: ddim (deterministic)
+
+**Example**:
+```
+Positive: "restored vintage photograph, natural colors, sharp details, 
+high quality scan"
+Negative: "damage, scratches, blur, grain, artifacts"
+Denoise: 0.4
+```
+
+## Advanced Techniques
+
+### Two-Pass Workflow (Hires Fix)
+
+Generate at low resolution, then upscale:
+
+1. First pass: Generate at 512×512, denoise 1.0
+2. Add **LatentUpscale** node to 2x size
+3. Second pass: Same prompt, denoise 0.4-0.6
+4. Results in higher quality than direct high-res generation
+
+### Variation Generation
+
+Create multiple variations of the same image:
+
+1. Set denoise to 0.4-0.6
+2. Use **RepeatLatentBatch** to duplicate encoded image
+3. Each batch gets a different seed
+4. Generate multiple variations in one run
+
+### Image Blending
+
+Blend two images:
+
+1. Encode both images with **VAEEncode**
+2. Use **LatentBlend** node (if available)
+3. Set blend_factor (0.5 = equal mix)
+4. Denoise the blended result
+
+## Denoise Strength Guide
+
+| Denoise | Effect | Use Case |
+|---------|--------|----------|
+| 0.1-0.3 | Minimal change | Color correction, subtle enhancement |
+| 0.3-0.5 | Moderate change | Upscaling, detail enhancement |
+| 0.5-0.7 | Significant change | Style transfer, artistic transformation |
+| 0.7-0.9 | Major change | Sketch to image, composition changes |
+| 0.9-1.0 | Almost new | Using image as loose inspiration only |
+
+## Resolution Handling
+
+### Resizing Input
+
+Use **ImageScale** to resize before encoding:
+
+```json
+{
+  "resize": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": ["load_image", 0],
+      "width": 1024,
+      "height": 1024,
+      "upscale_method": "lanczos",
+      "crop": "center"
+    }
+  }
+}
+```
+
+**Upscale methods**:
+- **lanczos**: Best for upscaling photos
+- **bicubic**: Smooth results
+- **nearest-exact**: Pixel art
+- **bilinear**: Fast but softer
+
+### Aspect Ratio Preservation
+
+Set either width or height to 0 for automatic scaling:
+
+```json
+{
+  "width": 1024,
+  "height": 0  // Automatically calculated
+}
+```
+
+## Sampler Recommendations
+
+### For Photo Editing
+- **ddim**: Deterministic, preserves details
+- **euler**: Fast, good for previews
+- Steps: 20-30
+
+### For Artistic Transformation
+- **dpm++ 2m karras**: Quality/speed balance
+- **euler_ancestral**: More variation
+- Steps: 25-35
+
+### For High Fidelity
+- **dpm++ sde karras**: Best quality
+- **ddim**: Consistent results
+- Steps: 30-50
+
+## Troubleshooting
+
+### Too much change from original
+- Lower denoise strength (try 0.4)
+- Reduce CFG scale (try 6-7)
+- Use ddim sampler for more consistency
+
+### Not enough change
+- Increase denoise (try 0.7-0.8)
+- Raise CFG scale (try 9-11)
+- Be more specific in prompt
+- Increase steps to 30-40
+
+### Artifacts or distortion
+- Check if image resolution is compatible (multiples of 8)
+- Try different VAE
+- Lower denoise strength
+- Reduce CFG scale
+
+### Out of memory
+- Scale down input image
+- Use **VAEEncodeTiled** for very large images
+- Reduce batch size
+
+## Tips and Best Practices
+
+1. **Start conservative**: Begin with denoise 0.5, adjust from there
+2. **Match model training**: Use SD1.5 for 512px, SDXL for 1024px
+3. **Seed consistency**: Lock seed when iterating on denoise/prompts
+4. **Prompt the original**: Include aspects you want to preserve
+5. **Negative prompt matters**: Be specific about what to avoid
+
+## Next Steps
+
+- Learn [Inpainting](/guides/inpainting) to edit specific regions
+- Explore [ControlNet](/guides/controlnet) for precise structural control
+- Try combining img2img with LoRAs for enhanced results
+- Experiment with different models optimized for specific tasks

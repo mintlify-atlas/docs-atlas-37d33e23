@@ -1,0 +1,474 @@
+---
+title: Inpainting Guide
+description: Edit specific parts of images with AI-powered inpainting in ComfyUI
+---
+
+Inpainting allows you to selectively edit or regenerate specific regions of an image while preserving the rest. This is essential for fixing details, removing objects, or seamlessly adding new elements.
+
+## How Inpainting Works
+
+1. **Define area**: Create a mask marking the region to regenerate
+2. **Encode**: Convert image and mask to latent space
+3. **Denoise**: Only regenerate the masked area
+4. **Decode**: Blend seamlessly with unmasked regions
+
+ComfyUI supports two inpainting approaches:
+- **Standard models** with VAEEncodeForInpaint
+- **Dedicated inpaint models** with InpaintModelConditioning
+
+## Standard Model Inpainting
+
+Works with any Stable Diffusion model.
+
+<Steps>
+
+### Load and prepare image
+
+1. Add **LoadImage** node
+2. Upload your image
+3. Create a mask:
+   - Paint white on areas to regenerate
+   - Black = preserve
+   - White = repaint
+
+You can also use **LoadImageMask** to load a pre-made mask from the alpha channel.
+
+### Encode for inpainting
+
+1. Add **VAEEncodeForInpaint** node
+2. Connect:
+   - **pixels**: from LoadImage
+   - **vae**: from CheckpointLoaderSimple
+   - **mask**: from LoadImage mask output (or LoadImageMask)
+3. Set **grow_mask_by**: 6 (default)
+   - Expands mask slightly for seamless blending
+   - Higher values = softer edges
+   - Range: 0-64 pixels
+
+### Set up prompts
+
+1. Add **CheckpointLoaderSimple**
+2. Add two **CLIPTextEncode** nodes
+
+**Prompt strategy**:
+- Describe what should be in the masked area
+- Include context from the surrounding image
+- Be specific about blending and style
+
+**Example** (removing an object):
+```
+Positive: "grass lawn, natural lighting, photorealistic, seamless"
+Negative: "object, person, artifacts, visible seams, inconsistent lighting"
+```
+
+### Sample and decode
+
+1. Add **KSampler**:
+   - **latent_image**: from VAEEncodeForInpaint
+   - **denoise**: 1.0 (full regeneration of masked area)
+   - **steps**: 25-40 (higher for better blending)
+   - **cfg**: 7-8
+2. Add **VAEDecode** and **SaveImage**
+
+### Generate
+
+Press **Ctrl+Enter**. The masked area will be regenerated while preserving the rest.
+
+</Steps>
+
+## Workflow JSON: Standard Inpainting
+
+```json
+{
+  "load_image": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "photo.png"
+    }
+  },
+  "checkpoint": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "v1-5-pruned-emaonly.safetensors"
+    }
+  },
+  "vae_encode_inpaint": {
+    "class_type": "VAEEncodeForInpaint",
+    "inputs": {
+      "pixels": ["load_image", 0],
+      "vae": ["checkpoint", 2],
+      "mask": ["load_image", 1],
+      "grow_mask_by": 6
+    }
+  },
+  "positive": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": ["checkpoint", 1],
+      "text": "natural background, seamless blend, photorealistic"
+    }
+  },
+  "negative": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": ["checkpoint", 1],
+      "text": "artifacts, seams, inconsistent, blurry"
+    }
+  },
+  "sampler": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": ["checkpoint", 0],
+      "positive": ["positive", 0],
+      "negative": ["negative", 0],
+      "latent_image": ["vae_encode_inpaint", 0],
+      "seed": 42,
+      "steps": 30,
+      "cfg": 7.5,
+      "sampler_name": "dpm++ 2m karras",
+      "scheduler": "karras",
+      "denoise": 1.0
+    }
+  },
+  "vae_decode": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["sampler", 0],
+      "vae": ["checkpoint", 2]
+    }
+  },
+  "save": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": ["vae_decode", 0],
+      "filename_prefix": "inpaint"
+    }
+  }
+}
+```
+
+## Inpaint Model Workflow
+
+Dedicated inpaint models (like SD 1.5 inpaint) produce better results for complex edits.
+
+<Steps>
+
+### Load inpaint checkpoint
+
+Use **CheckpointLoaderSimple** with an inpaint-specific model:
+- `sd-v1-5-inpainting.ckpt`
+- `sd-v2-inpainting.ckpt`
+
+### Prepare conditioning
+
+1. Add **InpaintModelConditioning** node
+2. Connect:
+   - **positive**: from positive CLIPTextEncode
+   - **negative**: from negative CLIPTextEncode
+   - **vae**: from checkpoint
+   - **pixels**: from LoadImage
+   - **mask**: from LoadImage mask output
+3. Set **noise_mask**: True (recommended)
+   - Limits sampling to masked area
+   - Improves quality and speed
+
+This node outputs:
+- Modified positive conditioning
+- Modified negative conditioning  
+- Latent with noise mask
+
+### Sample with inpaint model
+
+1. Add **KSampler**
+2. Use conditioning and latent from InpaintModelConditioning
+3. Settings:
+   - **denoise**: 1.0
+   - **steps**: 30-50 (inpaint models benefit from more steps)
+   - **cfg**: 7-9
+
+</Steps>
+
+## Workflow JSON: Inpaint Model
+
+```json
+{
+  "load_image": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "photo.png"
+    }
+  },
+  "checkpoint": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "sd-v1-5-inpainting.ckpt"
+    }
+  },
+  "positive": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": ["checkpoint", 1],
+      "text": "beautiful garden, colorful flowers, natural daylight"
+    }
+  },
+  "negative": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": ["checkpoint", 1],
+      "text": "blurry, distorted, artifacts, low quality"
+    }
+  },
+  "inpaint_conditioning": {
+    "class_type": "InpaintModelConditioning",
+    "inputs": {
+      "positive": ["positive", 0],
+      "negative": ["negative", 0],
+      "vae": ["checkpoint", 2],
+      "pixels": ["load_image", 0],
+      "mask": ["load_image", 1],
+      "noise_mask": true
+    }
+  },
+  "sampler": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": ["checkpoint", 0],
+      "positive": ["inpaint_conditioning", 0],
+      "negative": ["inpaint_conditioning", 1],
+      "latent_image": ["inpaint_conditioning", 2],
+      "seed": 123,
+      "steps": 40,
+      "cfg": 8.0,
+      "sampler_name": "dpm++ 2m karras",
+      "scheduler": "karras",
+      "denoise": 1.0
+    }
+  },
+  "vae_decode": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["sampler", 0],
+      "vae": ["checkpoint", 2]
+    }
+  },
+  "save": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": ["vae_decode", 0],
+      "filename_prefix": "inpaint_model"
+    }
+  }
+}
+```
+
+## Common Use Cases
+
+### Object Removal
+
+**Goal**: Remove unwanted elements
+
+1. Mask the object to remove
+2. Prompt what should be there instead
+3. Use high grow_mask_by (8-16) for better blending
+
+**Settings**:
+```
+Prompt: "[describe background], natural, seamless"
+Steps: 35-50
+CFG: 7-8
+grow_mask_by: 12
+```
+
+### Adding Elements
+
+**Goal**: Insert new objects or details
+
+1. Mask where new element should appear
+2. Detailed prompt describing the addition
+3. Include lighting/style context
+
+**Example**:
+```
+Prompt: "red sports car parked on street, realistic lighting matching scene, 
+sharp focus, detailed"
+CFG: 8-10 (higher for specific objects)
+```
+
+### Face/Detail Fixing
+
+**Goal**: Improve specific details
+
+1. Mask problem area tightly
+2. Describe desired result
+3. Low grow_mask_by (2-4)
+
+**Settings**:
+```
+Prompt: "beautiful detailed face, natural expression, sharp eyes"
+Steps: 40-50
+CFG: 7
+grow_mask_by: 3
+```
+
+### Background Extension (Outpainting)
+
+**Goal**: Expand image borders
+
+1. Use **ImagePadForOutpaint** node to extend canvas
+2. Mask the new area
+3. Prompt continuation of the scene
+
+```json
+{
+  "pad": {
+    "class_type": "ImagePadForOutpaint",
+    "inputs": {
+      "image": ["load_image", 0],
+      "left": 256,
+      "top": 0,
+      "right": 256,
+      "bottom": 0,
+      "feathering": 40
+    }
+  }
+}
+```
+
+The node outputs both padded image and automatic mask.
+
+## Mask Creation Tips
+
+### Manual Masking
+
+1. Use image editor (Photoshop, GIMP, etc.)
+2. White = regenerate, Black = keep
+3. Soft edges with blur for better blending
+4. Save with alpha channel
+
+### Mask from Alpha Channel
+
+Use **LoadImageMask**:
+
+```json
+{
+  "mask": {
+    "class_type": "LoadImageMask",
+    "inputs": {
+      "image": "mask.png",
+      "channel": "alpha"
+    }
+  }
+}
+```
+
+Channels: alpha, red, green, blue
+
+### Feathering
+
+**grow_mask_by** creates smooth transitions:
+- Small objects: 4-8
+- Medium areas: 8-16  
+- Large regions: 16-32
+- Full image blend: 40+
+
+## Advanced Techniques
+
+### Multi-Region Inpainting
+
+1. Create mask with multiple separate areas
+2. Prompt describes all areas together
+3. Higher steps (40-60) for complexity
+
+### Iterative Refinement
+
+1. First pass: Rough inpaint, denoise 1.0
+2. Save result
+3. Second pass: Load result, smaller mask, denoise 0.6-0.8
+4. Refine specific details
+
+### Compositional Inpainting
+
+Use **ConditioningSetMask** for regional prompts:
+
+```json
+{
+  "masked_conditioning": {
+    "class_type": "ConditioningSetMask",
+    "inputs": {
+      "conditioning": ["positive", 0],
+      "mask": ["load_mask", 0],
+      "strength": 1.0,
+      "set_cond_area": "mask bounds"
+    }
+  }
+}
+```
+
+This applies prompt only to masked region, giving precise control.
+
+## Parameter Guide
+
+### grow_mask_by
+
+- **0**: Hard edges, visible seams
+- **2-4**: Tight blending, detail work
+- **6-8**: Standard blending (default)
+- **12-16**: Soft transitions, large areas
+- **32+**: Very gradual blend, outpainting
+
+### Steps
+
+- **20-30**: Quick edits, simple fills
+- **30-40**: Standard quality
+- **40-60**: Complex inpainting, multiple objects
+- **60+**: Challenging blends, high detail
+
+### CFG Scale
+
+- **6-7**: Natural blending, less artifacts
+- **7-8**: Balanced (recommended)
+- **8-10**: Strong prompt adherence, adding specific objects
+- **10+**: Risk of oversaturation at mask edges
+
+## Troubleshooting
+
+### Visible seams
+- Increase grow_mask_by (try 12-20)
+- Lower CFG scale (try 6-7)
+- Increase steps (35-50)
+- Use softer mask edges
+
+### Generated area doesn't match
+- Describe surrounding context in prompt
+- Include lighting/style references
+- Try dedicated inpaint model
+- Increase CFG for stronger adherence
+
+### Blurry results
+- Increase steps (40+)
+- Use better sampler (dpm++ sde karras)
+- Check VAE quality
+- Try dedicated inpaint model
+
+### Changes bleed outside mask
+- Reduce grow_mask_by
+- Use hard-edged mask
+- Enable noise_mask (inpaint models)
+- Lower denoise slightly (0.95)
+
+## Best Practices
+
+1. **Match the style**: Prompt should describe existing image style
+2. **Contextual prompts**: Reference surrounding elements
+3. **Start simple**: Test with small masks first
+4. **Iterate**: Run multiple generations, pick best
+5. **Feather appropriately**: Match grow_mask_by to edit size
+6. **Consider dedicated models**: Better for complex edits
+7. **Higher steps**: Inpainting benefits from extra refinement
+
+## Next Steps
+
+- Combine with [ControlNet](/guides/controlnet) for precise inpainting
+- Explore regional prompting with ConditioningSetMask
+- Try different inpaint-specific models
+- Experiment with outpainting for image extension

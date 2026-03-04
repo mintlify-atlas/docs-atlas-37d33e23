@@ -1,0 +1,472 @@
+---
+title: Memory Management
+description: Learn about ComfyUI's memory management system, VRAM optimization, and model offloading strategies
+---
+
+## Overview
+
+ComfyUI includes a sophisticated memory management system that automatically handles VRAM allocation, model loading/unloading, and memory optimization across different hardware configurations.
+
+## VRAM States
+
+ComfyUI adapts its behavior based on available VRAM through the `VRAMState` enum:
+
+```python
+class VRAMState(Enum):
+    DISABLED = 0    # No VRAM present: no need to move models to VRAM
+    NO_VRAM = 1     # Very low VRAM: enable all options to save VRAM
+    LOW_VRAM = 2    # Limited VRAM: selective model loading
+    NORMAL_VRAM = 3 # Standard operation
+    HIGH_VRAM = 4   # Keep models in VRAM
+    SHARED = 5      # Shared CPU/GPU memory (e.g., integrated graphics)
+```
+
+### State Selection
+
+The VRAM state is automatically detected based on:
+- Total VRAM available
+- Command-line arguments (`--lowvram`, `--highvram`, `--novram`, `--gpu-only`)
+- Hardware type (CPU, CUDA, MPS, XPU, etc.)
+
+<CodeGroup>
+```bash Force Low VRAM
+python main.py --lowvram
+```
+
+```bash Force High VRAM
+python main.py --highvram
+```
+
+```bash Disable VRAM Management
+python main.py --novram
+```
+
+```bash Keep Everything on GPU
+python main.py --gpu-only
+```
+</CodeGroup>
+
+## Device Management
+
+### Supported Devices
+
+ComfyUI supports multiple compute backends:
+
+<Tabs>
+  <Tab title="CUDA (NVIDIA)">
+    ```python
+    def get_torch_device():
+        return torch.device(torch.cuda.current_device())
+    ```
+    
+    Primary device for NVIDIA GPUs with full feature support.
+  </Tab>
+  
+  <Tab title="MPS (Apple)">
+    ```python
+    if torch.backends.mps.is_available():
+        cpu_state = CPUState.MPS
+        device = torch.device("mps")
+    ```
+    
+    Metal Performance Shaders for Apple Silicon.
+  </Tab>
+  
+  <Tab title="XPU (Intel)">
+    ```python
+    if torch.xpu.is_available():
+        device = torch.device("xpu", torch.xpu.current_device())
+    ```
+    
+    Intel extension for PyTorch.
+  </Tab>
+  
+  <Tab title="NPU (Ascend)">
+    ```python
+    if torch.npu.is_available():
+        device = torch.device("npu", torch.npu.current_device())
+    ```
+    
+    Ascend NPU support.
+  </Tab>
+</Tabs>
+
+### Getting Memory Information
+
+```python
+from comfy import model_management
+
+# Get total memory
+total_vram = model_management.get_total_memory()
+print(f"Total VRAM: {total_vram / (1024**3):.2f} GB")
+
+# Get free memory
+free_vram = model_management.get_free_memory()
+print(f"Free VRAM: {free_vram / (1024**3):.2f} GB")
+
+# Get both hardware and PyTorch memory
+mem_total, mem_torch = model_management.get_free_memory(
+    device, 
+    torch_free_too=True
+)
+```
+
+<Info>
+  The memory reporting differs between hardware backends. CUDA uses `torch.cuda.mem_get_info()`, while XPU and NPU use their respective APIs.
+</Info>
+
+## Model Loading System
+
+### LoadedModel Class
+
+The `LoadedModel` class tracks loaded models and their memory usage:
+
+```python
+class LoadedModel:
+    def __init__(self, model):
+        self.device = model.load_device
+        self.real_model = None
+        self.currently_used = True
+        
+    def model_memory(self):
+        """Total model size"""
+        return self.model.model_size()
+    
+    def model_loaded_memory(self):
+        """Currently loaded portion"""
+        return self.model.loaded_size()
+    
+    def model_offloaded_memory(self):
+        """Portion offloaded to CPU/disk"""
+        return self.model.model_size() - self.model.loaded_size()
+```
+
+### Loading Models to GPU
+
+The `load_models_gpu()` function orchestrates model loading:
+
+```python
+def load_models_gpu(
+    models, 
+    memory_required=0, 
+    force_patch_weights=False,
+    minimum_memory_required=None, 
+    force_full_load=False
+):
+    # 1. Calculate total memory required
+    # 2. Free memory if needed
+    # 3. Load models with partial loading if necessary
+    # 4. Track loaded models
+    pass
+```
+
+<Steps>
+  <Step title="Memory Calculation">
+    Calculate total VRAM and RAM requirements for all models
+  </Step>
+  
+  <Step title="Free Memory">
+    Unload existing models if insufficient memory
+  </Step>
+  
+  <Step title="Partial Loading">
+    Load only essential parts of models in low VRAM scenarios
+  </Step>
+  
+  <Step title="Track Models">
+    Add loaded models to `current_loaded_models` list
+  </Step>
+</Steps>
+
+## Partial Model Loading (LowVRAM)
+
+In low VRAM scenarios, ComfyUI loads only portions of models:
+
+```python
+if vram_set_state == VRAMState.LOW_VRAM:
+    loaded_memory = loaded_model.model_loaded_memory()
+    current_free_mem = get_free_memory(torch_dev) + loaded_memory
+    
+    # Calculate how much of the model to load
+    lowvram_model_memory = max(
+        0,
+        (current_free_mem - minimum_memory_required),
+        min(
+            current_free_mem * MIN_WEIGHT_MEMORY_RATIO,
+            current_free_mem - minimum_inference_memory()
+        )
+    )
+    
+    loaded_model.model_load(lowvram_model_memory)
+```
+
+<Note>
+  `MIN_WEIGHT_MEMORY_RATIO` is set to 0.0 for NVIDIA (allowing more aggressive offloading) and 0.4 for other devices.
+</Note>
+
+## Memory Freeing Strategy
+
+The `free_memory()` function intelligently unloads models:
+
+```python
+def free_memory(
+    memory_required, 
+    device, 
+    keep_loaded=[], 
+    for_dynamic=False, 
+    ram_required=0
+):
+    # 1. Garbage collect
+    cleanup_models_gc()
+    
+    # 2. Find candidate models to unload
+    can_unload = []
+    for shift_model in current_loaded_models:
+        if shift_model not in keep_loaded:
+            can_unload.append(shift_model)
+    
+    # 3. Sort by offloaded memory (unload least active first)
+    for model in sorted(can_unload):
+        if get_free_memory(device) < memory_required:
+            model.model_unload()
+    
+    # 4. Clear cache
+    soft_empty_cache()
+```
+
+### Unloading Priority
+
+Models are prioritized for unloading based on:
+
+1. **Offloaded memory** (models with more already offloaded)
+2. **Reference count** (fewer references = unload first)
+3. **Total memory** (larger models considered)
+
+## Reserved Memory
+
+ComfyUI reserves memory for system operations:
+
+```python
+EXTRA_RESERVED_VRAM = 400 * 1024 * 1024  # 400 MB base
+
+if WINDOWS:
+    EXTRA_RESERVED_VRAM = 600 * 1024 * 1024  # 600 MB on Windows
+    if total_vram > (15 * 1024):  # 16GB+ cards
+        EXTRA_RESERVED_VRAM += 100 * 1024 * 1024
+
+def minimum_inference_memory():
+    return (1024 * 1024 * 1024) * 0.8 + extra_reserved_memory()
+```
+
+<Warning>
+  Windows requires more reserved VRAM due to shared memory management. You can override this with `--reserve-vram` argument.
+</Warning>
+
+## Async Weight Offloading
+
+ComfyUI supports asynchronous weight offloading with CUDA/XPU streams:
+
+```python
+NUM_STREAMS = 2  # Default for NVIDIA and AMD
+
+if args.async_offload is not None:
+    NUM_STREAMS = args.async_offload
+
+def get_offload_stream(device):
+    if NUM_STREAMS == 0:
+        return None
+    
+    if device in STREAMS:
+        ss = STREAMS[device]
+        ss[stream_counter].wait_stream(current_stream(device))
+        stream_counter = (stream_counter + 1) % len(ss)
+        return ss[stream_counter]
+```
+
+### Cast Buffers
+
+To reduce memory allocations, ComfyUI maintains reusable cast buffers:
+
+```python
+STREAM_CAST_BUFFERS = {}
+
+def get_cast_buffer(offload_stream, device, size, ref):
+    cast_buffer = STREAM_CAST_BUFFERS.get(offload_stream, None)
+    if cast_buffer is None or cast_buffer.numel() < size:
+        with offload_stream.as_context(offload_stream):
+            cast_buffer = torch.empty((size), dtype=torch.int8, device=device)
+            STREAM_CAST_BUFFERS[offload_stream] = cast_buffer
+    return cast_buffer
+```
+
+## Pinned Memory
+
+For faster CPU-GPU transfers, ComfyUI pins CPU memory:
+
+```python
+MAX_PINNED_MEMORY = get_total_memory(torch.device("cpu")) * 0.95
+
+def pin_memory(tensor):
+    if not is_device_cpu(tensor.device):
+        return False
+    
+    size = tensor.nbytes
+    if (TOTAL_PINNED_MEMORY + size) > MAX_PINNED_MEMORY:
+        return False
+    
+    ptr = tensor.data_ptr()
+    if torch.cuda.cudart().cudaHostRegister(ptr, size, 1) == 0:
+        PINNED_MEMORY[ptr] = size
+        TOTAL_PINNED_MEMORY += size
+        return True
+```
+
+<Tip>
+  Pinned memory enables faster DMA transfers but is limited to ~95% of system RAM on Linux and ~45% on Windows.
+</Tip>
+
+## Device Placement Functions
+
+ComfyUI provides specialized functions for different model components:
+
+### UNet/Diffusion Models
+
+```python
+def unet_offload_device():
+    if vram_state == VRAMState.HIGH_VRAM:
+        return get_torch_device()
+    else:
+        return torch.device("cpu")
+
+def unet_inital_load_device(parameters, dtype):
+    torch_dev = get_torch_device()
+    if vram_state == VRAMState.HIGH_VRAM or vram_state == VRAMState.SHARED:
+        return torch_dev
+    
+    model_size = dtype_size(dtype) * parameters
+    if model_size < get_free_memory(torch_dev):
+        return torch_dev
+    return torch.device("cpu")
+```
+
+### Text Encoders
+
+```python
+def text_encoder_device():
+    if args.gpu_only:
+        return get_torch_device()
+    elif vram_state == VRAMState.HIGH_VRAM or vram_state == VRAMState.NORMAL_VRAM:
+        if should_use_fp16(prioritize_performance=False):
+            return get_torch_device()
+    return torch.device("cpu")
+```
+
+### VAE
+
+```python
+def vae_device():
+    if args.cpu_vae:
+        return torch.device("cpu")
+    return get_torch_device()
+
+def vae_offload_device():
+    if args.gpu_only:
+        return get_torch_device()
+    return torch.device("cpu")
+```
+
+## Garbage Collection
+
+ComfyUI monitors for memory leaks and triggers garbage collection:
+
+```python
+def cleanup_models_gc():
+    do_gc = False
+    reset_cast_buffers()
+    
+    for cur in current_loaded_models:
+        if cur.is_dead():
+            logging.info(
+                f"Potential memory leak detected with model {cur.real_model().__class__.__name__}"
+            )
+            do_gc = True
+            break
+    
+    if do_gc:
+        gc.collect()
+        soft_empty_cache()
+```
+
+<Warning>
+  If you see memory leak warnings, check for circular references in your custom nodes or models.
+</Warning>
+
+## Command-Line Options
+
+<ParamField path="--lowvram" type="boolean">
+  Enable low VRAM mode for GPUs with limited memory
+</ParamField>
+
+<ParamField path="--highvram" type="boolean">
+  Keep models in VRAM (disables offloading)
+</ParamField>
+
+<ParamField path="--novram" type="boolean">
+  Minimal VRAM usage (very slow)
+</ParamField>
+
+<ParamField path="--gpu-only" type="boolean">
+  Never offload models to CPU
+</ParamField>
+
+<ParamField path="--reserve-vram" type="float">
+  Reserve N GB of VRAM for other applications
+</ParamField>
+
+<ParamField path="--disable-smart-memory" type="boolean">
+  Disable intelligent memory management
+</ParamField>
+
+<ParamField path="--disable-async-offload" type="boolean">
+  Disable async weight offloading
+</ParamField>
+
+<ParamField path="--async-offload" type="integer">
+  Number of streams for async offloading (default: 2)
+</ParamField>
+
+<ParamField path="--disable-pinned-memory" type="boolean">
+  Disable pinned memory for CPU-GPU transfers
+</ParamField>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Monitor VRAM Usage" icon="chart-line">
+    Use `get_free_memory()` to track available VRAM during execution
+  </Card>
+  
+  <Card title="Avoid Memory Leaks" icon="triangle-exclamation">
+    Ensure proper cleanup in custom nodes using weak references
+  </Card>
+  
+  <Card title="Use Appropriate VRAM State" icon="sliders">
+    Let ComfyUI auto-detect or manually set based on your workflow
+  </Card>
+  
+  <Card title="Enable Async Offload" icon="forward-fast">
+    Keep async offloading enabled for better performance on NVIDIA/AMD
+  </Card>
+</CardGroup>
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Quantization" href="/advanced/quantization" icon="compress">
+    Reduce model memory footprint with FP8/FP16 quantization
+  </Card>
+  
+  <Card title="Custom Nodes" href="/advanced/custom-nodes" icon="puzzle-piece">
+    Build memory-efficient custom nodes
+  </Card>
+</CardGroup>

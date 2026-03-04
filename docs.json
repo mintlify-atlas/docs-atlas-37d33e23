@@ -1,122 +1,157 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "ComfyUI",
+  "theme": "aspen",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#7C3AED",
+    "light": "#A78BFA",
+    "dark": "#5B21B6"
   },
   "favicon": "/favicon.svg",
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/Comfy-Org/ComfyUI"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/Comfy-Org/ComfyUI"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
-              "quickstart",
-              "development"
+              "introduction",
+              "installation",
+              "quickstart"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Concepts",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "concepts/workflows",
+              "concepts/nodes",
+              "concepts/models",
+              "concepts/execution"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Supported Models",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "models/image-models",
+              "models/video-models",
+              "models/audio-models",
+              "models/3d-models"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Advanced Features",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "advanced/quantization",
+              "advanced/memory-management",
+              "advanced/custom-nodes",
+              "advanced/model-merging"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/model-paths",
+              "configuration/command-line-args",
+              "configuration/hardware-support"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "REST API",
             "pages": [
-              "api-reference/introduction"
+              "api/overview",
+              "api/prompt",
+              "api/history",
+              "api/queue"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "WebSocket API",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/websocket-overview",
+              "api/websocket-events"
+            ]
+          },
+          {
+            "group": "Node Reference",
+            "pages": [
+              "nodes/overview",
+              "nodes/loaders",
+              "nodes/conditioning",
+              "nodes/sampling",
+              "nodes/latent",
+              "nodes/image"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Extensions",
+        "groups": [
+          {
+            "group": "Custom Nodes",
+            "pages": [
+              "extensions/creating-nodes",
+              "extensions/node-api",
+              "extensions/best-practices"
+            ]
+          },
+          {
+            "group": "ComfyUI Manager",
+            "pages": [
+              "extensions/manager-overview",
+              "extensions/installing-extensions"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Guides",
+        "groups": [
+          {
+            "group": "Tutorials",
+            "pages": [
+              "guides/first-workflow",
+              "guides/text-to-image",
+              "guides/image-to-image",
+              "guides/inpainting",
+              "guides/controlnet"
+            ]
+          },
+          {
+            "group": "Integration",
+            "pages": [
+              "guides/python-integration",
+              "guides/headless-mode",
+              "guides/docker"
+            ]
+          },
+          {
+            "group": "Troubleshooting",
+            "pages": [
+              "guides/common-issues",
+              "guides/performance-optimization",
+              "guides/gpu-troubleshooting"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

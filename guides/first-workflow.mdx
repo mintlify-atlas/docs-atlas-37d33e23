@@ -1,0 +1,188 @@
+---
+title: Creating Your First Workflow
+description: Learn how to build your first text-to-image workflow in ComfyUI
+---
+
+This guide will walk you through creating your first complete workflow in ComfyUI. By the end, you'll understand how nodes connect together to generate images from text prompts.
+
+## What You'll Build
+
+A basic text-to-image workflow that:
+- Loads a Stable Diffusion model
+- Encodes positive and negative prompts
+- Generates an image
+- Saves the result
+
+## Prerequisites
+
+- ComfyUI installed and running
+- A Stable Diffusion checkpoint (e.g., `v1-5-pruned-emaonly.safetensors`) in `models/checkpoints/`
+
+<Steps>
+
+### Load the model
+
+1. Right-click on the canvas and search for "CheckpointLoaderSimple"
+2. Select your checkpoint file from the dropdown
+3. This node outputs three connections:
+   - **MODEL**: The diffusion model for generating images
+   - **CLIP**: Text encoder for understanding prompts
+   - **VAE**: Encoder/decoder for converting between pixels and latents
+
+### Create your prompts
+
+1. Add two "CLIPTextEncode" nodes (search by typing or use the positive/negative aliases)
+2. Connect the **CLIP** output from CheckpointLoaderSimple to both nodes
+3. In the first node (positive), enter: `masterpiece best quality girl`
+4. In the second node (negative), enter: `bad hands`
+
+The CLIP model converts your text descriptions into embeddings the model can understand.
+
+### Set up the latent space
+
+1. Add an "EmptyLatentImage" node
+2. Set dimensions:
+   - **width**: 512
+   - **height**: 512
+   - **batch_size**: 1
+
+This creates a blank canvas in latent space where your image will be generated.
+
+### Configure the sampler
+
+1. Add a "KSampler" node
+2. Make the following connections:
+   - **model**: from CheckpointLoaderSimple
+   - **positive**: from your positive CLIPTextEncode
+   - **negative**: from your negative CLIPTextEncode
+   - **latent_image**: from EmptyLatentImage
+3. Configure sampling parameters:
+   - **seed**: Any number (controls randomness)
+   - **steps**: 20 (how many denoising steps)
+   - **cfg**: 8.0 (how closely to follow the prompt)
+   - **sampler_name**: euler
+   - **scheduler**: normal
+   - **denoise**: 1.0 (full denoising for text-to-image)
+
+### Decode to pixels
+
+1. Add a "VAEDecode" node
+2. Connect:
+   - **samples**: from KSampler output
+   - **vae**: from CheckpointLoaderSimple
+
+This converts the latent representation back into a visible image.
+
+### Save your image
+
+1. Add a "SaveImage" node
+2. Connect **images** from VAEDecode
+3. Set a **filename_prefix** like "my_first_image"
+
+Images are saved to the `output/` directory by default.
+
+### Generate
+
+Press **Ctrl+Enter** (or **Cmd+Enter** on Mac) to queue your workflow. Watch the progress bar and see your first generated image!
+
+</Steps>
+
+## Complete Workflow JSON
+
+Here's the API format for this basic workflow:
+
+```json
+{
+  "3": {
+    "class_type": "KSampler",
+    "inputs": {
+      "cfg": 8,
+      "denoise": 1,
+      "latent_image": ["5", 0],
+      "model": ["4", 0],
+      "negative": ["7", 0],
+      "positive": ["6", 0],
+      "sampler_name": "euler",
+      "scheduler": "normal",
+      "seed": 8566257,
+      "steps": 20
+    }
+  },
+  "4": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "v1-5-pruned-emaonly.safetensors"
+    }
+  },
+  "5": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "batch_size": 1,
+      "height": 512,
+      "width": 512
+    }
+  },
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": ["4", 1],
+      "text": "masterpiece best quality girl"
+    }
+  },
+  "7": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": ["4", 1],
+      "text": "bad hands"
+    }
+  },
+  "8": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["3", 0],
+      "vae": ["4", 2]
+    }
+  },
+  "9": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "ComfyUI",
+      "images": ["8", 0]
+    }
+  }
+}
+```
+
+## Understanding the Workflow
+
+### Node Connections
+
+Each node ID (like "3", "4", etc.) references a node. Inputs like `["4", 0]` mean:
+- `"4"`: Node ID to connect from
+- `0`: Output index from that node
+
+### The Generation Process
+
+1. **CheckpointLoaderSimple** loads the model weights
+2. **CLIPTextEncode** converts text prompts into embeddings
+3. **EmptyLatentImage** creates a random noise tensor
+4. **KSampler** iteratively denoises the latent based on your prompts
+5. **VAEDecode** converts the latent to pixel space
+6. **SaveImage** writes the PNG to disk
+
+## Next Steps
+
+- Experiment with different prompts
+- Try changing the seed for variations
+- Adjust CFG scale (higher = follows prompt more closely)
+- Increase steps for potentially better quality
+- Learn about [image-to-image](/guides/image-to-image) workflows
+- Explore [ControlNet](/guides/controlnet) for precise control
+
+## Tips
+
+- Use `(word:1.2)` to increase emphasis on specific terms
+- Use `(word:0.8)` to decrease emphasis
+- Escape special characters: `\(`, `\)`, `\{`, `\}`
+- Try different samplers (euler, dpm++, etc.) for different styles
+- The scheduler controls noise reduction - "normal" works for most cases

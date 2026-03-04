@@ -1,0 +1,526 @@
+---
+title: Nodes
+description: Understanding ComfyUI's node system, connections, inputs, and outputs
+---
+
+## Overview
+
+Nodes are the fundamental building blocks of ComfyUI workflows. Each node represents a specific operation in the image generation pipeline, from loading models to applying effects. Nodes communicate through typed connections and execute in dependency order.
+
+## Node Class Structure
+
+All ComfyUI nodes follow a common structure defined by the `ComfyNodeABC` base class:
+
+```python
+from comfy.comfy_types import ComfyNodeABC, InputTypeDict
+from comfy_api.latest import io
+
+class CLIPTextEncode(ComfyNodeABC):
+    @classmethod
+    def INPUT_TYPES(s) -> InputTypeDict:
+        return {
+            "required": {
+                "text": (IO.STRING, {
+                    "multiline": True, 
+                    "dynamicPrompts": True,
+                    "tooltip": "The text to be encoded."
+                }),
+                "clip": (IO.CLIP, {
+                    "tooltip": "The CLIP model used for encoding."
+                })
+            }
+        }
+    
+    RETURN_TYPES = (IO.CONDITIONING,)
+    OUTPUT_TOOLTIPS = ("A conditioning containing the embedded text.",)
+    FUNCTION = "encode"
+    CATEGORY = "conditioning"
+    
+    def encode(self, clip, text):
+        tokens = clip.tokenize(text)
+        return (clip.encode_from_tokens_scheduled(tokens), )
+```
+
+### Required Class Attributes
+
+<ParamField path="INPUT_TYPES" type="classmethod" required>
+  Returns a dictionary defining node inputs in three categories:
+  - `required`: Mandatory inputs for execution
+  - `optional`: Optional inputs with defaults
+  - `hidden`: Special inputs like prompt metadata
+</ParamField>
+
+<ParamField path="RETURN_TYPES" type="tuple" required>
+  Tuple of output type strings (e.g., `("IMAGE", "MASK")`)
+</ParamField>
+
+<ParamField path="FUNCTION" type="string" required>
+  Name of the method to execute when the node runs
+</ParamField>
+
+<ParamField path="CATEGORY" type="string">
+  Category path for organizing nodes in the UI (e.g., `"loaders"`, `"conditioning/controlnet"`)
+</ParamField>
+
+### Optional Class Attributes
+
+<ParamField path="OUTPUT_NODE" type="boolean">
+  Set to `True` for nodes that produce final outputs (like SaveImage)
+</ParamField>
+
+<ParamField path="OUTPUT_TOOLTIPS" type="tuple">
+  Descriptive tooltips for each output
+</ParamField>
+
+<ParamField path="DESCRIPTION" type="string">
+  Detailed description of the node's functionality
+</ParamField>
+
+<ParamField path="SEARCH_ALIASES" type="list">
+  Alternative search terms for finding the node
+</ParamField>
+
+<ParamField path="DEPRECATED" type="boolean">
+  Mark node as deprecated (still functional but discouraged)
+</ParamField>
+
+## Input Types
+
+### Built-in Types
+
+ComfyUI provides standard types for common data:
+
+<CodeGroup>
+```python Model Types
+IO.MODEL      # Diffusion model
+IO.CLIP       # Text encoder
+IO.VAE        # VAE encoder/decoder
+IO.CONTROL_NET  # ControlNet model
+```
+
+```python Data Types
+IO.IMAGE      # Image tensor [B,H,W,C]
+IO.LATENT     # Latent tensor dict
+IO.MASK       # Mask tensor [B,H,W]
+IO.CONDITIONING  # Text conditioning
+```
+
+```python Primitive Types
+IO.STRING     # Text input
+IO.INT        # Integer value
+IO.FLOAT      # Floating point value
+IO.BOOLEAN    # True/False
+```
+</CodeGroup>
+
+### Input Configuration
+
+Inputs can include additional configuration:
+
+```python
+"strength": ("FLOAT", {
+    "default": 1.0,
+    "min": 0.0,
+    "max": 10.0,
+    "step": 0.01,
+    "tooltip": "Strength of the effect"
+})
+```
+
+<ParamField path="default" type="any">
+  Default value when not connected
+</ParamField>
+
+<ParamField path="min" type="number">
+  Minimum allowed value (INT/FLOAT)
+</ParamField>
+
+<ParamField path="max" type="number">
+  Maximum allowed value (INT/FLOAT)
+</ParamField>
+
+<ParamField path="step" type="number">
+  Increment step for UI controls
+</ParamField>
+
+<ParamField path="multiline" type="boolean">
+  Use multiline text input (STRING)
+</ParamField>
+
+<ParamField path="dynamicPrompts" type="boolean">
+  Enable dynamic prompt syntax (STRING)
+</ParamField>
+
+<ParamField path="tooltip" type="string">
+  Help text displayed to users
+</ParamField>
+
+<ParamField path="advanced" type="boolean">
+  Hide in simple mode
+</ParamField>
+
+## Node Connections
+
+### Link Format
+
+Connections between nodes are represented as arrays:
+
+```python
+[source_node_id, source_output_index, target_node_id, target_input_index, link_id, data_type]
+```
+
+Example:
+```json
+[1, 0, 3, 0, 1, "MODEL"]
+```
+
+This connects:
+- Node 1's first output (index 0)
+- To Node 3's first input (index 0)
+- Link ID 1
+- Data type: MODEL
+
+### Input Data Resolution
+
+From `execution.py:152-184`, inputs are resolved at runtime:
+
+```python
+def get_input_data(inputs, class_def, unique_id, execution_list=None):
+    input_data_all = {}
+    for x in inputs:
+        input_data = inputs[x]
+        if is_link(input_data):
+            input_unique_id = input_data[0]
+            output_index = input_data[1]
+            
+            # Get cached output from connected node
+            cached = execution_list.get_cache(input_unique_id, unique_id)
+            if cached is None or cached.outputs is None:
+                # Input not yet available
+                continue
+            
+            obj = cached.outputs[output_index]
+            input_data_all[x] = obj
+        else:
+            # Direct value (not a link)
+            input_data_all[x] = [input_data]
+    
+    return input_data_all
+```
+
+<Info>
+**Lazy Evaluation**: Nodes can defer input evaluation until needed using the `check_lazy_status` method.
+</Info>
+
+## Node Execution
+
+### Map Over List Pattern
+
+Nodes can process batched inputs using the map-over-list pattern:
+
+```python
+class MyNode:
+    INPUT_IS_LIST = False  # Process items individually
+    OUTPUT_IS_LIST = [False, True]  # Second output is a list
+    
+    def process(self, image, strength):
+        # Automatically called for each item
+        result = apply_effect(image, strength)
+        return (result, [metadata])
+```
+
+From `execution.py:232-308`, the execution system handles batching:
+
+```python
+async def _async_map_node_over_list(prompt_id, unique_id, obj, 
+                                     input_data_all, func):
+    input_is_list = getattr(obj, "INPUT_IS_LIST", False)
+    
+    if input_is_list:
+        # Pass all inputs as lists
+        await process_inputs(input_data_all, 0, input_is_list=True)
+    else:
+        # Process each item individually
+        max_len = max(len(x) for x in input_data_all.values())
+        for i in range(max_len):
+            input_dict = slice_dict(input_data_all, i)
+            await process_inputs(input_dict, i)
+```
+
+### Async Execution
+
+Nodes can be asynchronous:
+
+```python
+import asyncio
+
+class AsyncNode:
+    FUNCTION = "process"
+    
+    async def process(self, input_data):
+        # Async operations
+        result = await some_async_operation(input_data)
+        return (result,)
+```
+
+Async tasks are automatically managed:
+
+```python
+if inspect.iscoroutinefunction(f):
+    task = asyncio.create_task(async_wrapper(f, prompt_id, unique_id, 
+                                             list_index, args=inputs))
+    await asyncio.sleep(0)  # Give task chance to execute
+    if task.done():
+        results.append(task.result())
+    else:
+        results.append(task)  # Store pending task
+```
+
+## Node Validation
+
+### Input Validation
+
+Nodes can implement custom validation:
+
+```python
+class MyNode:
+    @classmethod
+    def VALIDATE_INPUTS(s, **kwargs):
+        if 'image' in kwargs:
+            img = kwargs['image']
+            if img.shape[2] < 512:
+                return "Image width must be at least 512px"
+        return True
+```
+
+From `execution.py:971-998`, validation is called before execution:
+
+```python
+if len(validate_function_inputs) > 0:
+    input_data_all = get_input_data(inputs, obj_class, unique_id)
+    input_filtered = {}
+    for x in input_data_all:
+        if x in validate_function_inputs:
+            input_filtered[x] = input_data_all[x]
+    
+    ret = await _async_map_node_over_list(
+        prompt_id, unique_id, obj_class, 
+        input_filtered, validate_function_name
+    )
+    
+    for r in ret:
+        if r is not True:
+            errors.append({
+                "type": "custom_validation_failed",
+                "message": "Custom validation failed",
+                "details": str(r)
+            })
+```
+
+### Type Validation
+
+Type checking happens automatically:
+
+```python
+# Check if received type matches expected type
+received_type = source_node.RETURN_TYPES[output_index]
+input_type = target_input_config[0]
+
+if not validate_node_input(received_type, input_type):
+    error = {
+        "type": "return_type_mismatch",
+        "message": "Return type mismatch between linked nodes",
+        "details": f"received {received_type}, expected {input_type}"
+    }
+```
+
+## Special Node Features
+
+### Hidden Inputs
+
+Nodes can access workflow metadata through hidden inputs:
+
+```python
+{
+    "hidden": {
+        "unique_id": "UNIQUE_ID",
+        "prompt": "PROMPT",
+        "extra_pnginfo": "EXTRA_PNGINFO",
+        "dynprompt": "DYNPROMPT"
+    }
+}
+```
+
+These are automatically injected:
+
+```python
+if "hidden" in valid_inputs:
+    h = valid_inputs["hidden"]
+    if h.get("UNIQUE_ID"):
+        input_data_all["unique_id"] = [unique_id]
+    if h.get("PROMPT"):
+        input_data_all["prompt"] = [dynprompt.get_original_prompt()]
+```
+
+### IS_CHANGED Method
+
+Nodes can invalidate cache when inputs change:
+
+```python
+class CheckpointLoader:
+    @classmethod
+    def IS_CHANGED(s, ckpt_name):
+        # Return different value when file changes
+        ckpt_path = folder_paths.get_full_path("checkpoints", ckpt_name)
+        m = hashlib.sha256()
+        with open(ckpt_path, 'rb') as f:
+            m.update(f.read())
+        return m.digest().hex()
+```
+
+### Combo Inputs
+
+Dynamic dropdown lists:
+
+```python
+@classmethod
+def INPUT_TYPES(s):
+    return {
+        "required": {
+            "ckpt_name": (folder_paths.get_filename_list("checkpoints"), {
+                "tooltip": "The checkpoint to load"
+            })
+        }
+    }
+```
+
+## Node Categories
+
+<CardGroup cols={2}>
+  <Card title="Loaders" icon="download">
+    Load models, images, and other resources
+    - CheckpointLoaderSimple
+    - VAELoader
+    - LoraLoader
+  </Card>
+  
+  <Card title="Conditioning" icon="wand-magic-sparkles">
+    Create and modify text conditioning
+    - CLIPTextEncode
+    - ConditioningCombine
+    - ConditioningSetArea
+  </Card>
+  
+  <Card title="Sampling" icon="shuffle">
+    Generate and refine latents
+    - KSampler
+    - SamplerCustom
+    - KSamplerAdvanced
+  </Card>
+  
+  <Card title="Latent" icon="layer-group">
+    Manipulate latent space
+    - VAEEncode
+    - VAEDecode
+    - LatentUpscale
+  </Card>
+  
+  <Card title="Image" icon="image">
+    Process and transform images
+    - ImageScale
+    - ImageBlur
+    - ImageComposite
+  </Card>
+  
+  <Card title="Output" icon="floppy-disk">
+    Save and export results
+    - SaveImage
+    - SaveLatent
+    - PreviewImage
+  </Card>
+</CardGroup>
+
+## Example: Complete Node Implementation
+
+```python
+from comfy.comfy_types import ComfyNodeABC
+from comfy_api.latest import io
+import torch
+
+class ImageBlend(ComfyNodeABC):
+    """
+    Blends two images together using various blend modes.
+    """
+    
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "image1": ("IMAGE", {
+                    "tooltip": "First image to blend"
+                }),
+                "image2": ("IMAGE", {
+                    "tooltip": "Second image to blend"
+                }),
+                "blend_mode": (["normal", "multiply", "screen", "overlay"], {
+                    "default": "normal",
+                    "tooltip": "Blending algorithm"
+                }),
+                "opacity": ("FLOAT", {
+                    "default": 0.5,
+                    "min": 0.0,
+                    "max": 1.0,
+                    "step": 0.01,
+                    "tooltip": "Blend strength"
+                })
+            }
+        }
+    
+    RETURN_TYPES = ("IMAGE",)
+    OUTPUT_TOOLTIPS = ("The blended result",)
+    FUNCTION = "blend"
+    CATEGORY = "image/composite"
+    DESCRIPTION = "Blend two images using various modes"
+    SEARCH_ALIASES = ["composite", "mix", "combine images"]
+    
+    @classmethod
+    def VALIDATE_INPUTS(s, image1, image2, **kwargs):
+        if image1.shape != image2.shape:
+            return "Images must have the same dimensions"
+        return True
+    
+    def blend(self, image1, image2, blend_mode, opacity):
+        # Blend implementation
+        if blend_mode == "multiply":
+            result = image1 * image2
+        elif blend_mode == "screen":
+            result = 1 - (1 - image1) * (1 - image2)
+        elif blend_mode == "overlay":
+            mask = image1 < 0.5
+            result = torch.where(mask, 
+                                2 * image1 * image2,
+                                1 - 2 * (1 - image1) * (1 - image2))
+        else:  # normal
+            result = image2
+        
+        # Apply opacity
+        result = image1 * (1 - opacity) + result * opacity
+        
+        return (result,)
+```
+
+## See Also
+
+<CardGroup cols={3}>
+  <Card title="Workflows" icon="diagram-project" href="/concepts/workflows">
+    How nodes connect into workflows
+  </Card>
+  
+  <Card title="Execution" icon="play" href="/concepts/execution">
+    How nodes are executed
+  </Card>
+  
+  <Card title="Models" icon="cube" href="/concepts/models">
+    Loading and using models in nodes
+  </Card>
+</CardGroup>

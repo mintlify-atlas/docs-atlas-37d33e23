@@ -1,0 +1,468 @@
+---
+title: Queue Management
+description: Monitor and control the execution queue
+---
+
+## GET /queue
+
+```
+GET /queue
+GET /api/queue
+```
+
+Retrieves the current state of the execution queue, including running and pending prompts.
+
+### Response
+
+<ResponseField name="queue_running" type="array">
+  Array of currently executing prompts. Each item is an array containing: `[number, prompt_id, workflow, extra_data, outputs_to_execute]`
+</ResponseField>
+
+<ResponseField name="queue_pending" type="array">
+  Array of prompts waiting to be executed. Each item follows the same structure as `queue_running`.
+</ResponseField>
+
+### Example Request
+
+```bash
+curl http://127.0.0.1:8188/queue
+```
+
+### Example Response
+
+```json
+{
+  "queue_running": [
+    [
+      42,
+      "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      {
+        "3": {
+          "class_type": "KSampler",
+          "inputs": {
+            "seed": 12345,
+            "steps": 20
+          }
+        }
+      },
+      {
+        "client_id": "my-client",
+        "create_time": 1709596800000
+      },
+      ["9"]
+    ]
+  ],
+  "queue_pending": [
+    [
+      43,
+      "b2c3d4e5-f6a7-8901-bcde-f23456789012",
+      {
+        "3": {
+          "class_type": "KSampler",
+          "inputs": {
+            "seed": 67890,
+            "steps": 25
+          }
+        }
+      },
+      {
+        "client_id": "another-client",
+        "create_time": 1709596820000
+      },
+      ["9"]
+    ]
+  ]
+}
+```
+
+### Python Example
+
+```python
+import json
+import urllib.request
+
+def get_queue():
+    """Get current queue status."""
+    with urllib.request.urlopen("http://127.0.0.1:8188/queue") as response:
+        return json.loads(response.read())
+
+queue = get_queue()
+print(f"Running: {len(queue['queue_running'])} prompts")
+print(f"Pending: {len(queue['queue_pending'])} prompts")
+
+for item in queue['queue_pending']:
+    number, prompt_id, workflow, extra_data, outputs = item
+    print(f"  Prompt {prompt_id} at position {number}")
+```
+
+---
+
+## POST /queue
+
+```
+POST /queue
+POST /api/queue
+```
+
+Manages the execution queue by clearing all pending items or deleting specific prompts.
+
+### Request Body
+
+<ParamField body="clear" type="boolean">
+  When `true`, removes all pending prompts from the queue. Does not affect currently running prompts.
+</ParamField>
+
+<ParamField body="delete" type="array">
+  Array of prompt IDs to remove from the queue.
+</ParamField>
+
+### Response
+
+Returns `200 OK` on success.
+
+### Example: Clear Queue
+
+```bash
+curl -X POST http://127.0.0.1:8188/queue \
+  -H "Content-Type: application/json" \
+  -d '{"clear": true}'
+```
+
+### Example: Delete Specific Prompts
+
+```bash
+curl -X POST http://127.0.0.1:8188/queue \
+  -H "Content-Type: application/json" \
+  -d '{
+    "delete": [
+      "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "b2c3d4e5-f6a7-8901-bcde-f23456789012"
+    ]
+  }'
+```
+
+### Python Example
+
+```python
+import json
+import urllib.request
+
+def clear_queue():
+    """Clear all pending prompts from the queue."""
+    data = json.dumps({"clear": True}).encode('utf-8')
+    req = urllib.request.Request(
+        "http://127.0.0.1:8188/queue",
+        data=data,
+        headers={'Content-Type': 'application/json'}
+    )
+    urllib.request.urlopen(req)
+    print("Queue cleared")
+
+def delete_from_queue(prompt_ids):
+    """Delete specific prompts from the queue.
+    
+    Args:
+        prompt_ids: List of prompt IDs to delete
+    """
+    data = json.dumps({"delete": prompt_ids}).encode('utf-8')
+    req = urllib.request.Request(
+        "http://127.0.0.1:8188/queue",
+        data=data,
+        headers={'Content-Type': 'application/json'}
+    )
+    urllib.request.urlopen(req)
+    print(f"Deleted {len(prompt_ids)} prompts")
+
+# Usage
+clear_queue()
+
+# Or delete specific prompts
+delete_from_queue([
+    "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "b2c3d4e5-f6a7-8901-bcde-f23456789012"
+])
+```
+
+---
+
+## GET /prompt
+
+```
+GET /prompt
+GET /api/prompt
+```
+
+Retrieves queue information including the number of remaining tasks.
+
+### Response
+
+<ResponseField name="exec_info" type="object">
+  Execution information object.
+  
+  <Expandable title="exec_info properties">
+    <ResponseField name="queue_remaining" type="integer">
+      Number of tasks remaining in the queue (both running and pending).
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example Request
+
+```bash
+curl http://127.0.0.1:8188/prompt
+```
+
+### Example Response
+
+```json
+{
+  "exec_info": {
+    "queue_remaining": 5
+  }
+}
+```
+
+---
+
+## POST /interrupt
+
+```
+POST /interrupt
+POST /api/interrupt
+```
+
+Interrupts the currently executing prompt or a specific prompt by ID.
+
+### Request Body
+
+<ParamField body="prompt_id" type="string">
+  Optional prompt ID to interrupt. If provided, only interrupts if this specific prompt is currently running. If omitted, performs a global interrupt on any running prompt.
+</ParamField>
+
+### Response
+
+Returns `200 OK` on success.
+
+### Example: Global Interrupt
+
+```bash
+curl -X POST http://127.0.0.1:8188/interrupt \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+### Example: Targeted Interrupt
+
+```bash
+curl -X POST http://127.0.0.1:8188/interrupt \
+  -H "Content-Type: application/json" \
+  -d '{"prompt_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"}'
+```
+
+### Python Example
+
+```python
+import json
+import urllib.request
+
+def interrupt_execution(prompt_id=None):
+    """Interrupt prompt execution.
+    
+    Args:
+        prompt_id: Optional specific prompt to interrupt.
+                  If None, interrupts any running prompt.
+    """
+    payload = {}
+    if prompt_id:
+        payload["prompt_id"] = prompt_id
+    
+    data = json.dumps(payload).encode('utf-8')
+    req = urllib.request.Request(
+        "http://127.0.0.1:8188/interrupt",
+        data=data,
+        headers={'Content-Type': 'application/json'}
+    )
+    urllib.request.urlopen(req)
+    
+    if prompt_id:
+        print(f"Interrupted prompt {prompt_id}")
+    else:
+        print("Sent global interrupt")
+
+# Global interrupt
+interrupt_execution()
+
+# Targeted interrupt
+interrupt_execution("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+```
+
+---
+
+## POST /free
+
+```
+POST /free
+POST /api/free
+```
+
+Controls memory management by unloading models or freeing memory.
+
+### Request Body
+
+<ParamField body="unload_models" type="boolean">
+  When `true`, unloads all models from memory after the current execution completes.
+</ParamField>
+
+<ParamField body="free_memory" type="boolean">
+  When `true`, triggers memory cleanup after the current execution completes.
+</ParamField>
+
+### Response
+
+Returns `200 OK` on success.
+
+### Example Request
+
+```bash
+curl -X POST http://127.0.0.1:8188/free \
+  -H "Content-Type: application/json" \
+  -d '{
+    "unload_models": true,
+    "free_memory": true
+  }'
+```
+
+### Python Example
+
+```python
+import json
+import urllib.request
+
+def free_memory(unload_models=False, free_memory=False):
+    """Free memory and/or unload models.
+    
+    Args:
+        unload_models: Whether to unload models from memory
+        free_memory: Whether to free memory
+    """
+    payload = {}
+    if unload_models:
+        payload["unload_models"] = True
+    if free_memory:
+        payload["free_memory"] = True
+    
+    data = json.dumps(payload).encode('utf-8')
+    req = urllib.request.Request(
+        "http://127.0.0.1:8188/free",
+        data=data,
+        headers={'Content-Type': 'application/json'}
+    )
+    urllib.request.urlopen(req)
+    print("Memory management flags set")
+
+# Unload models and free memory
+free_memory(unload_models=True, free_memory=True)
+```
+
+---
+
+## Complete Queue Management Example
+
+```python
+import json
+import urllib.request
+import time
+
+class QueueManager:
+    def __init__(self, server_address="127.0.0.1:8188"):
+        self.server = server_address
+        self.base_url = f"http://{server_address}"
+    
+    def get_queue_status(self):
+        """Get current queue status."""
+        with urllib.request.urlopen(f"{self.base_url}/queue") as response:
+            return json.loads(response.read())
+    
+    def get_queue_remaining(self):
+        """Get number of remaining tasks."""
+        with urllib.request.urlopen(f"{self.base_url}/prompt") as response:
+            data = json.loads(response.read())
+            return data['exec_info']['queue_remaining']
+    
+    def clear_queue(self):
+        """Clear all pending prompts."""
+        self._post_queue({"clear": True})
+    
+    def delete_prompts(self, prompt_ids):
+        """Delete specific prompts from queue."""
+        self._post_queue({"delete": prompt_ids})
+    
+    def interrupt(self, prompt_id=None):
+        """Interrupt execution."""
+        payload = {"prompt_id": prompt_id} if prompt_id else {}
+        self._post(f"{self.base_url}/interrupt", payload)
+    
+    def free_memory(self, unload_models=True):
+        """Free memory and unload models."""
+        self._post(f"{self.base_url}/free", {
+            "unload_models": unload_models,
+            "free_memory": True
+        })
+    
+    def wait_for_queue_empty(self, poll_interval=1.0):
+        """Wait until queue is empty."""
+        while True:
+            remaining = self.get_queue_remaining()
+            if remaining == 0:
+                break
+            print(f"Waiting... {remaining} tasks remaining")
+            time.sleep(poll_interval)
+        print("Queue is empty")
+    
+    def _post(self, url, payload):
+        """Helper to make POST requests."""
+        data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={'Content-Type': 'application/json'}
+        )
+        urllib.request.urlopen(req)
+    
+    def _post_queue(self, payload):
+        """Post to queue endpoint."""
+        self._post(f"{self.base_url}/queue", payload)
+
+# Usage
+manager = QueueManager()
+
+# Check queue status
+status = manager.get_queue_status()
+print(f"Running: {len(status['queue_running'])}")
+print(f"Pending: {len(status['queue_pending'])}")
+
+# Wait for completion
+manager.wait_for_queue_empty()
+
+# Clean up
+manager.free_memory(unload_models=True)
+```
+
+## Notes
+
+<Note>
+  Queue operations affect pending prompts. Currently running prompts cannot be removed from the queue, but can be interrupted using `/interrupt`.
+</Note>
+
+<Warning>
+  Clearing the queue or interrupting execution will cause any affected prompts to not complete. Make sure to handle this in your application logic.
+</Warning>
+
+<Tip>
+  Use the WebSocket API to receive real-time queue status updates instead of polling the REST endpoints.
+</Tip>
+
+## See Also
+
+- [POST /prompt](/api/prompt) - Queue prompts for execution
+- [GET /history](/api/history) - Retrieve execution results

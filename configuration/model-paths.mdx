@@ -1,0 +1,322 @@
+---
+title: Model Paths Configuration
+description: Configure custom model paths and share models between ComfyUI and other UIs
+---
+
+The `extra_model_paths.yaml` configuration file allows you to specify custom search paths for models, enabling you to:
+
+- Share models between ComfyUI and other UIs (Automatic1111, InvokeAI, etc.)
+- Organize models in a central location
+- Point to existing model installations without duplicating files
+
+## Configuration File Location
+
+The configuration file should be placed in your ComfyUI root directory:
+
+```
+ComfyUI/extra_model_paths.yaml
+```
+
+Alternatively, you can specify custom configuration files using the CLI:
+
+```bash
+python main.py --extra-model-paths-config /path/to/config.yaml
+```
+
+You can load multiple configuration files by repeating the argument:
+
+```bash
+python main.py --extra-model-paths-config /path/to/config1.yaml --extra-model-paths-config /path/to/config2.yaml
+```
+
+## Basic Configuration Structure
+
+Each configuration is defined as a named section with a `base_path` and model type folders:
+
+```yaml
+config_name:
+  base_path: /path/to/models/
+  checkpoints: models/checkpoints/
+  loras: models/loras/
+  vae: models/vae/
+```
+
+<Note>
+Rename `extra_model_paths.yaml.example` to `extra_model_paths.yaml` to activate the configuration.
+</Note>
+
+## ComfyUI Configuration
+
+To point to an existing ComfyUI installation or a central model folder:
+
+```yaml
+comfyui:
+  base_path: /path/to/comfyui/
+  # Mark as default to use these folders first
+  is_default: true
+  checkpoints: models/checkpoints/
+  clip_vision: models/clip_vision/
+  configs: models/configs/
+  controlnet: models/controlnet/
+  embeddings: models/embeddings/
+  loras: models/loras/
+  upscale_models: models/upscale_models/
+  vae: models/vae/
+  audio_encoders: models/audio_encoders/
+  model_patches: models/model_patches/
+```
+
+### Text Encoders with Multiple Paths
+
+You can specify multiple search paths for a single model type using the pipe (`|`) character:
+
+```yaml
+comfyui:
+  base_path: /path/to/comfyui/
+  text_encoders: |
+    models/text_encoders/
+    models/clip/  # legacy location still supported
+```
+
+### Diffusion Models with Multiple Paths
+
+Similarly, diffusion models can have multiple search locations:
+
+```yaml
+comfyui:
+  base_path: /path/to/comfyui/
+  diffusion_models: |
+    models/diffusion_models
+    models/unet
+```
+
+## Automatic1111 Configuration
+
+To share models with Stable Diffusion WebUI (A1111):
+
+```yaml
+a111:
+  base_path: /path/to/stable-diffusion-webui/
+  checkpoints: models/Stable-diffusion
+  configs: models/Stable-diffusion
+  vae: models/VAE
+  loras: |
+    models/Lora
+    models/LyCORIS
+  upscale_models: |
+    models/ESRGAN
+    models/RealESRGAN
+    models/SwinIR
+  embeddings: embeddings
+  hypernetworks: models/hypernetworks
+  controlnet: models/ControlNet
+```
+
+## Supported Model Types
+
+ComfyUI supports the following model folder types:
+
+<ParamField path="checkpoints" type="string">
+  Main model checkpoints (SD1.5, SDXL, Flux, etc.)
+</ParamField>
+
+<ParamField path="text_encoders" type="string">
+  CLIP and text encoder models
+</ParamField>
+
+<ParamField path="clip_vision" type="string">
+  CLIP vision models for image conditioning
+</ParamField>
+
+<ParamField path="configs" type="string">
+  Model configuration files
+</ParamField>
+
+<ParamField path="controlnet" type="string">
+  ControlNet models
+</ParamField>
+
+<ParamField path="diffusion_models" type="string">
+  Diffusion models and UNet models
+</ParamField>
+
+<ParamField path="embeddings" type="string">
+  Textual inversion embeddings
+</ParamField>
+
+<ParamField path="loras" type="string">
+  LoRA models (regular, LoCon, LoHA)
+</ParamField>
+
+<ParamField path="upscale_models" type="string">
+  Upscaler models (ESRGAN, SwinIR, etc.)
+</ParamField>
+
+<ParamField path="vae" type="string">
+  VAE models
+</ParamField>
+
+<ParamField path="audio_encoders" type="string">
+  Audio encoder models
+</ParamField>
+
+<ParamField path="model_patches" type="string">
+  Model patch files
+</ParamField>
+
+<ParamField path="hypernetworks" type="string">
+  Hypernetwork models
+</ParamField>
+
+<ParamField path="style_models" type="string">
+  Style transfer models
+</ParamField>
+
+<ParamField path="vae_approx" type="string">
+  VAE approximation models (TAESD)
+</ParamField>
+
+<ParamField path="photomaker" type="string">
+  PhotoMaker models
+</ParamField>
+
+<ParamField path="classifiers" type="string">
+  Classifier models
+</ParamField>
+
+<ParamField path="gligen" type="string">
+  GLIGEN models
+</ParamField>
+
+<ParamField path="custom_nodes" type="string">
+  Custom nodes directory
+</ParamField>
+
+<Note>
+For a complete list of supported model types, see `folder_paths.py` in the ComfyUI source code.
+</Note>
+
+## Default Folders Flag
+
+Use the `is_default` flag to prioritize certain folders:
+
+```yaml
+comfyui:
+  base_path: /path/to/comfyui/
+  is_default: true
+  checkpoints: models/checkpoints/
+```
+
+Folders marked as default will be:
+- Listed first in model selection dropdowns
+- Used as the default download location for new models
+
+## Multiple Configurations
+
+You can define multiple configurations in the same file:
+
+```yaml
+comfyui:
+  base_path: /path/to/comfyui/
+  checkpoints: models/checkpoints/
+  loras: models/loras/
+
+a111:
+  base_path: /path/to/stable-diffusion-webui/
+  checkpoints: models/Stable-diffusion
+  loras: models/Lora
+
+custom:
+  base_path: /mnt/external/ai-models/
+  checkpoints: checkpoints
+  loras: loras
+```
+
+ComfyUI will search all configured paths when looking for models.
+
+## Path Resolution
+
+Paths can be specified as:
+
+- **Absolute paths**: `/home/user/models/checkpoints/`
+- **Relative to base_path**: `models/checkpoints/` (relative to the `base_path` setting)
+
+<Warning>
+On Windows, use forward slashes (`/`) or escaped backslashes (`\\`) in paths:
+
+```yaml
+comfyui:
+  base_path: C:/ComfyUI/
+  # or
+  base_path: C:\\ComfyUI\\
+```
+</Warning>
+
+## Example: Complete Configuration
+
+```yaml
+# Main ComfyUI installation
+comfyui:
+  base_path: /home/user/ComfyUI/
+  is_default: true
+  checkpoints: models/checkpoints/
+  text_encoders: |
+    models/text_encoders/
+    models/clip/
+  clip_vision: models/clip_vision/
+  controlnet: models/controlnet/
+  diffusion_models: |
+    models/diffusion_models
+    models/unet
+  embeddings: models/embeddings/
+  loras: models/loras/
+  upscale_models: models/upscale_models/
+  vae: models/vae/
+
+# Shared A1111 models
+a111:
+  base_path: /home/user/stable-diffusion-webui/
+  checkpoints: models/Stable-diffusion
+  vae: models/VAE
+  loras: |
+    models/Lora
+    models/LyCORIS
+  upscale_models: |
+    models/ESRGAN
+    models/RealESRGAN
+  embeddings: embeddings
+  controlnet: models/ControlNet
+
+# External storage
+external:
+  base_path: /mnt/nas/ai-models/
+  checkpoints: sd-models/
+  loras: lora-models/
+```
+
+## Troubleshooting
+
+### Models Not Appearing
+
+1. Check that the YAML syntax is correct (use spaces, not tabs)
+2. Verify that paths exist and are accessible
+3. Ensure the file is named `extra_model_paths.yaml` (not `.yaml.example`)
+4. Check ComfyUI startup logs for configuration errors
+
+### Invalid YAML Syntax
+
+Common YAML errors:
+
+- Using tabs instead of spaces for indentation
+- Missing colons after keys
+- Incorrect indentation levels
+- Not quoting paths with special characters
+
+### Permission Issues
+
+Ensure ComfyUI has read access to all configured paths:
+
+```bash
+ls -la /path/to/models/  # Linux/Mac
+dir /path/to/models/     # Windows
+```

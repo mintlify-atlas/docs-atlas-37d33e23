@@ -1,0 +1,472 @@
+---
+title: ControlNet Usage Guide
+description: Precise control over image generation with ControlNet in ComfyUI
+---
+
+ControlNet gives you precise control over image generation by conditioning on structural inputs like edges, depth maps, poses, and more. Instead of relying solely on text prompts, you guide the generation with visual references.
+
+## What is ControlNet?
+
+ControlNet is an extension to Stable Diffusion that accepts control images:
+- **Canny edges**: Line art and contours
+- **Depth maps**: 3D structure information
+- **Pose**: Human skeleton keypoints (OpenPose)
+- **Normal maps**: Surface orientation
+- **Scribbles**: Rough sketches
+- **Segmentation**: Semantic regions
+
+The model generates images that match both your text prompt and the structure from the control image.
+
+## Prerequisites
+
+- ControlNet model files in `models/controlnet/`
+- Preprocessor models (optional, for automatic control image generation)
+- Input image or pre-processed control map
+
+Download ControlNet models from Hugging Face (lllyasviel/ControlNet).
+
+## Basic Workflow
+
+<Steps>
+
+### Load your checkpoint
+
+Add **CheckpointLoaderSimple** to load your base Stable Diffusion model. ControlNet works with SD 1.5, SD 2.1, and SDXL variants.
+
+### Load ControlNet
+
+1. Add **ControlNetLoader** node
+2. Select your ControlNet model:
+   - `control_v11p_sd15_canny.pth` (edge detection)
+   - `control_v11f1p_sd15_depth.pth` (depth)
+   - `control_v11p_sd15_openpose.pth` (pose)
+   - Many others available
+
+### Prepare control image
+
+**Option A - Use existing control image**:
+1. Add **LoadImage** node
+2. Load a pre-processed control image (edges, depth map, etc.)
+
+**Option B - Auto-generate from image**:
+1. Add **LoadImage** for source image
+2. Add preprocessor node (Canny, Depth, etc.)
+3. Connect image to preprocessor
+
+Note: Preprocessor nodes vary by custom node packs. Many use nodes like "CannyEdgePreprocessor" or built-in image processing.
+
+### Apply ControlNet
+
+1. Add **ControlNetApplyAdvanced** node
+2. Make connections:
+   - **positive**: from positive CLIPTextEncode
+   - **negative**: from negative CLIPTextEncode
+   - **control_net**: from ControlNetLoader
+   - **image**: from LoadImage or preprocessor
+3. Configure parameters:
+   - **strength**: 0.5-1.5 (how strongly to follow control image)
+   - **start_percent**: 0.0 (when to start applying control)
+   - **end_percent**: 1.0 (when to stop applying control)
+
+### Generate as normal
+
+1. Use outputs from ControlNetApplyAdvanced as conditioning for **KSampler**
+2. Generate with **EmptyLatentImage** (or **VAEEncode** for img2img)
+3. Decode and save
+
+</Steps>
+
+## Complete Workflow JSON
+
+```json
+{
+  "checkpoint": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "v1-5-pruned-emaonly.safetensors"
+    }
+  },
+  "controlnet_loader": {
+    "class_type": "ControlNetLoader",
+    "inputs": {
+      "control_net_name": "control_v11p_sd15_canny.pth"
+    }
+  },
+  "load_control_image": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "canny_edges.png"
+    }
+  },
+  "positive": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": ["checkpoint", 1],
+      "text": "beautiful anime character, colorful, high quality, detailed"
+    }
+  },
+  "negative": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": ["checkpoint", 1],
+      "text": "blurry, low quality, distorted"
+    }
+  },
+  "controlnet_apply": {
+    "class_type": "ControlNetApplyAdvanced",
+    "inputs": {
+      "positive": ["positive", 0],
+      "negative": ["negative", 0],
+      "control_net": ["controlnet_loader", 0],
+      "image": ["load_control_image", 0],
+      "strength": 1.0,
+      "start_percent": 0.0,
+      "end_percent": 1.0
+    }
+  },
+  "empty_latent": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "width": 512,
+      "height": 768,
+      "batch_size": 1
+    }
+  },
+  "sampler": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": ["checkpoint", 0],
+      "positive": ["controlnet_apply", 0],
+      "negative": ["controlnet_apply", 1],
+      "latent_image": ["empty_latent", 0],
+      "seed": 42,
+      "steps": 25,
+      "cfg": 8.0,
+      "sampler_name": "euler",
+      "scheduler": "normal",
+      "denoise": 1.0
+    }
+  },
+  "vae_decode": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["sampler", 0],
+      "vae": ["checkpoint", 2]
+    }
+  },
+  "save": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": ["vae_decode", 0],
+      "filename_prefix": "controlnet"
+    }
+  }
+}
+```
+
+## ControlNet Types
+
+### Canny Edge Detection
+
+**Best for**: Line art, architectural drawings, precise outlines
+
+**Control image**: Black background with white edges
+
+**Use cases**:
+- Converting sketches to full illustrations
+- Maintaining architectural structure
+- Preserving composition while changing style
+
+**Strength**: 0.8-1.2
+
+### Depth Map
+
+**Best for**: 3D structure, perspective control
+
+**Control image**: Grayscale depth map (closer = brighter)
+
+**Use cases**:
+- Maintaining scene depth
+- Generating similar compositions
+- 3D-to-2D conversion
+
+**Strength**: 0.6-1.0
+
+### OpenPose
+
+**Best for**: Human pose control
+
+**Control image**: Stick figure skeleton
+
+**Use cases**:
+- Character pose consistency
+- Animation frame generation
+- Pose transfer between characters
+
+**Strength**: 0.8-1.2
+
+### Scribble
+
+**Best for**: Rough sketches, quick ideas
+
+**Control image**: Simple line drawings
+
+**Use cases**:
+- Concept exploration
+- Quick ideation
+- Loose composition control
+
+**Strength**: 0.5-0.9
+
+### Segmentation
+
+**Best for**: Color/region blocking
+
+**Control image**: Colored regions for different semantic areas
+
+**Use cases**:
+- Precise region control
+- Complex compositions
+- Scene layout planning
+
+**Strength**: 0.7-1.0
+
+### Normal Map
+
+**Best for**: Surface detail, lighting consistency
+
+**Control image**: RGB normal map
+
+**Use cases**:
+- Detailed surface structure
+- Maintaining 3D form
+- Lighting-consistent generation
+
+**Strength**: 0.5-0.8
+
+## Parameter Guide
+
+### Strength
+
+Controls how strongly the ControlNet influences generation:
+
+- **0.3-0.5**: Subtle guidance, more creative freedom
+- **0.6-0.8**: Moderate control, balanced
+- **0.9-1.2**: Strong adherence to control image
+- **1.3-1.5**: Very strict, may reduce quality
+- **> 1.5**: Can cause artifacts
+
+### Start/End Percent
+
+Control when ControlNet is active during denoising:
+
+**Full control (default)**:
+```json
+{
+  "start_percent": 0.0,
+  "end_percent": 1.0
+}
+```
+
+**Structure first, details later**:
+```json
+{
+  "start_percent": 0.0,
+  "end_percent": 0.7
+}
+```
+Applies control for composition, lets model add creative details.
+
+**Refinement only**:
+```json
+{
+  "start_percent": 0.3,
+  "end_percent": 1.0
+}
+```
+Lets model establish basic structure, then applies control.
+
+## Multiple ControlNets
+
+Combine multiple ControlNets for complex control:
+
+1. Load multiple ControlNetLoader nodes
+2. Chain ControlNetApplyAdvanced nodes:
+   - First: Apply ControlNet A to base conditioning
+   - Second: Apply ControlNet B to output of first
+3. Use final output for KSampler
+
+**Example**: Depth + Pose
+
+```json
+{
+  "controlnet_depth_apply": {
+    "class_type": "ControlNetApplyAdvanced",
+    "inputs": {
+      "positive": ["positive", 0],
+      "negative": ["negative", 0],
+      "control_net": ["depth_loader", 0],
+      "image": ["depth_image", 0],
+      "strength": 0.8,
+      "start_percent": 0.0,
+      "end_percent": 1.0
+    }
+  },
+  "controlnet_pose_apply": {
+    "class_type": "ControlNetApplyAdvanced",
+    "inputs": {
+      "positive": ["controlnet_depth_apply", 0],
+      "negative": ["controlnet_depth_apply", 1],
+      "control_net": ["pose_loader", 0],
+      "image": ["pose_image", 0],
+      "strength": 1.0,
+      "start_percent": 0.0,
+      "end_percent": 0.8
+    }
+  }
+}
+```
+
+## ControlNet with Img2Img
+
+Combine ControlNet with image-to-image:
+
+1. Use **VAEEncode** instead of EmptyLatentImage
+2. Set denoise 0.6-0.9
+3. Control image guides structure
+4. Source image provides style/details
+
+This is powerful for style transfer with structural consistency.
+
+## ControlNet with Inpainting
+
+Apply ControlNet to inpainting:
+
+1. Use **VAEEncodeForInpaint** or **InpaintModelConditioning**
+2. Apply ControlNet to conditioning
+3. Control image guides the inpainted region
+
+**Use case**: Replace an object while maintaining scene perspective (depth ControlNet).
+
+## Advanced Techniques
+
+### Regional ControlNet
+
+Use **ConditioningSetMask** to apply ControlNet only to specific regions:
+
+```json
+{
+  "regional_control": {
+    "class_type": "ConditioningSetMask",
+    "inputs": {
+      "conditioning": ["controlnet_apply", 0],
+      "mask": ["region_mask", 0],
+      "strength": 1.0,
+      "set_cond_area": "mask bounds"
+    }
+  }
+}
+```
+
+### Strength Scheduling
+
+Vary strength during generation using start/end_percent:
+
+**Strong structure, creative details**:
+- strength: 1.2
+- start_percent: 0.0
+- end_percent: 0.5
+
+**Soft guidance throughout**:
+- strength: 0.6
+- start_percent: 0.0  
+- end_percent: 1.0
+
+### Control Image Preprocessing
+
+For best results:
+1. Match control image resolution to generation size
+2. Use high-contrast edges for Canny
+3. Clean poses for OpenPose
+4. Smooth depth maps for better results
+
+## Common Use Cases
+
+### Architecture from Floorplan
+
+1. Create line drawing of floor plan
+2. Use Canny ControlNet, strength 1.0-1.2
+3. Prompt: architectural style, materials, lighting
+4. Result: Photorealistic render following layout
+
+### Character Pose Consistency
+
+1. Extract pose from reference with OpenPose
+2. Use pose ControlNet, strength 0.9-1.1  
+3. Generate multiple characters in same pose
+4. Perfect for animation frames or style variations
+
+### Photo to Illustration
+
+1. Source photo → Canny edges
+2. Canny ControlNet, strength 0.7-0.9
+3. Prompt artistic style
+4. Result: Illustration with original composition
+
+### 3D Scene Rendering
+
+1. Export depth map from 3D software
+2. Depth ControlNet, strength 0.8
+3. Prompt environment details
+4. Result: Photorealistic render with 3D structure
+
+## Troubleshooting
+
+### Too rigid/stiff results
+- Lower strength (try 0.6-0.8)
+- Reduce end_percent (try 0.7)
+- Use less precise control type (scribble vs canny)
+
+### Control not being followed
+- Increase strength (try 1.0-1.2)
+- Check control image quality
+- Ensure control image matches generation size
+- Increase CFG scale
+
+### Artifacts or distortion
+- Lower strength (try 0.7-0.9)
+- Increase steps (try 30-40)
+- Check control image for noise/errors
+- Try different sampler
+
+### Wrong ControlNet type
+- Canny edges appear blurry → regenerate with higher threshold
+- Depth looks flat → use better depth estimation
+- Pose ignored → ensure skeleton is clear and complete
+
+## Best Practices
+
+1. **Match resolutions**: Control image should match target size
+2. **Start conservative**: Begin with strength 0.8, adjust up/down
+3. **Clean inputs**: High-quality control images = better results
+4. **Combine wisely**: 2-3 ControlNets max, more can conflict
+5. **Prompt alignment**: Text should complement control image
+6. **Test settings**: Different models respond differently to strength
+7. **Use end_percent**: Often better to release control for final details
+
+## Model Compatibility
+
+- **SD 1.5**: Most ControlNet models available
+- **SD 2.1**: Fewer models, similar usage
+- **SDXL**: SDXL-specific ControlNets needed
+- **SD3**: Limited ControlNet support currently
+
+Always match ControlNet version to base model version.
+
+## Next Steps
+
+- Experiment with different ControlNet types
+- Combine multiple ControlNets for complex scenarios
+- Try ControlNet with LoRAs for style + structure control
+- Explore preprocessors for automatic control image generation
+- Create custom control images for precise artistic control

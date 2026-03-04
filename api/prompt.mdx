@@ -1,0 +1,301 @@
+---
+title: POST /prompt
+description: Queue a workflow for execution
+---
+
+## Endpoint
+
+```
+POST /prompt
+POST /api/prompt
+```
+
+Queues a ComfyUI workflow (prompt) for execution. The prompt must be in the API format exported from ComfyUI's "File → Export (API)" feature.
+
+## Request Body
+
+<ParamField body="prompt" type="object" required>
+  The workflow definition containing all nodes and their configurations. Each key is a node ID, and the value contains the node's class type and inputs.
+</ParamField>
+
+<ParamField body="prompt_id" type="string">
+  Optional custom identifier for the prompt. If not provided, a UUID will be generated automatically.
+</ParamField>
+
+<ParamField body="client_id" type="string">
+  Optional client identifier for tracking execution via WebSocket. Automatically added to `extra_data` if provided.
+</ParamField>
+
+<ParamField body="number" type="number">
+  Optional queue position number. If not provided, the prompt is added to the end of the queue.
+</ParamField>
+
+<ParamField body="front" type="boolean">
+  When `true`, adds the prompt to the front of the queue (high priority). Only works when `number` is not specified.
+</ParamField>
+
+<ParamField body="extra_data" type="object">
+  Additional metadata to store with the prompt execution.
+  
+  <Expandable title="extra_data properties">
+    <ParamField body="client_id" type="string">
+      Client identifier for WebSocket notifications
+    </ParamField>
+    
+    <ParamField body="api_key_comfy_org" type="string">
+      Comfy API key for workflows containing API nodes. Generate at [https://platform.comfy.org/login](https://platform.comfy.org/login)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="partial_execution_targets" type="array">
+  Optional array of node IDs to execute. When provided, only these nodes and their dependencies will be executed.
+</ParamField>
+
+## Response
+
+<ResponseField name="prompt_id" type="string">
+  Unique identifier for the queued prompt. Use this to track execution status and retrieve results.
+</ResponseField>
+
+<ResponseField name="number" type="number">
+  Queue position number assigned to this prompt.
+</ResponseField>
+
+<ResponseField name="node_errors" type="object">
+  Object containing any validation errors for specific nodes. Empty if validation passed.
+</ResponseField>
+
+## Error Response
+
+<ResponseField name="error" type="object">
+  Error information when prompt validation fails.
+  
+  <Expandable title="error properties">
+    <ResponseField name="type" type="string">
+      Error type (e.g., `"no_prompt"`, `"invalid_prompt"`)
+    </ResponseField>
+    
+    <ResponseField name="message" type="string">
+      Human-readable error message
+    </ResponseField>
+    
+    <ResponseField name="details" type="string">
+      Detailed error information
+    </ResponseField>
+    
+    <ResponseField name="extra_info" type="object">
+      Additional context about the error
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="node_errors" type="object">
+  Validation errors for specific nodes in the workflow.
+</ResponseField>
+
+## Example Request
+
+```bash
+curl -X POST http://127.0.0.1:8188/prompt \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": {
+      "3": {
+        "class_type": "KSampler",
+        "inputs": {
+          "seed": 156680208700286,
+          "steps": 20,
+          "cfg": 8,
+          "sampler_name": "euler",
+          "scheduler": "normal",
+          "denoise": 1,
+          "model": ["4", 0],
+          "positive": ["6", 0],
+          "negative": ["7", 0],
+          "latent_image": ["5", 0]
+        }
+      },
+      "4": {
+        "class_type": "CheckpointLoaderSimple",
+        "inputs": {
+          "ckpt_name": "v1-5-pruned-emaonly.safetensors"
+        }
+      },
+      "5": {
+        "class_type": "EmptyLatentImage",
+        "inputs": {
+          "width": 512,
+          "height": 512,
+          "batch_size": 1
+        }
+      },
+      "6": {
+        "class_type": "CLIPTextEncode",
+        "inputs": {
+          "text": "masterpiece best quality girl",
+          "clip": ["4", 1]
+        }
+      },
+      "7": {
+        "class_type": "CLIPTextEncode",
+        "inputs": {
+          "text": "bad hands",
+          "clip": ["4", 1]
+        }
+      },
+      "8": {
+        "class_type": "VAEDecode",
+        "inputs": {
+          "samples": ["3", 0],
+          "vae": ["4", 2]
+        }
+      },
+      "9": {
+        "class_type": "SaveImage",
+        "inputs": {
+          "filename_prefix": "ComfyUI",
+          "images": ["8", 0]
+        }
+      }
+    },
+    "client_id": "unique-client-identifier"
+  }'
+```
+
+## Example Response (Success)
+
+```json
+{
+  "prompt_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "number": 42,
+  "node_errors": {}
+}
+```
+
+## Example Response (Error)
+
+```json
+{
+  "error": {
+    "type": "invalid_prompt",
+    "message": "Missing required input",
+    "details": "Node 3 is missing required input: model",
+    "extra_info": {}
+  },
+  "node_errors": {
+    "3": {
+      "errors": [
+        {
+          "type": "required",
+          "message": "Required input is missing",
+          "details": "model"
+        }
+      ],
+      "dependent_outputs": ["8", "9"],
+      "class_type": "KSampler"
+    }
+  }
+}
+```
+
+## Python Example
+
+```python
+import json
+import urllib.request
+
+def queue_prompt(prompt, client_id=None, prompt_id=None):
+    payload = {"prompt": prompt}
+    
+    if client_id:
+        payload["client_id"] = client_id
+    
+    if prompt_id:
+        payload["prompt_id"] = prompt_id
+    
+    # Add API key for workflows with API nodes
+    # payload["extra_data"] = {
+    #     "api_key_comfy_org": "comfyui-your-key-here"
+    # }
+    
+    data = json.dumps(payload).encode('utf-8')
+    req = urllib.request.Request(
+        "http://127.0.0.1:8188/prompt",
+        data=data,
+        headers={'Content-Type': 'application/json'}
+    )
+    
+    response = urllib.request.urlopen(req)
+    return json.loads(response.read())
+
+# Load your workflow (exported from ComfyUI)
+with open('workflow_api.json', 'r') as f:
+    workflow = json.load(f)
+
+# Modify parameters as needed
+workflow["3"]["inputs"]["seed"] = 12345
+workflow["6"]["inputs"]["text"] = "beautiful landscape"
+
+# Queue the prompt
+result = queue_prompt(workflow, client_id="my-client")
+print(f"Queued with ID: {result['prompt_id']}")
+```
+
+## JavaScript Example
+
+```javascript
+async function queuePrompt(prompt, clientId = null) {
+  const payload = { prompt };
+  
+  if (clientId) {
+    payload.client_id = clientId;
+  }
+  
+  const response = await fetch('http://127.0.0.1:8188/prompt', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(`Failed to queue prompt: ${error.error.message}`);
+  }
+  
+  return await response.json();
+}
+
+// Usage
+const workflow = {
+  // Your workflow definition
+};
+
+try {
+  const result = await queuePrompt(workflow, 'my-client-id');
+  console.log('Prompt queued:', result.prompt_id);
+} catch (error) {
+  console.error('Error:', error.message);
+}
+```
+
+## Notes
+
+<Note>
+  The `prompt` object structure depends on your workflow. Export it from ComfyUI using "File → Export (API)" to get the correct format.
+</Note>
+
+<Warning>
+  When running locally without CORS enabled, requests must come from the same origin (host and port) to prevent CSRF attacks. Use `--enable-cors-header` to allow cross-origin requests.
+</Warning>
+
+<Tip>
+  Use `client_id` in combination with the WebSocket API to receive real-time updates about your prompt's execution status.
+</Tip>
+
+## See Also
+
+- [GET /history](/api/history) - Retrieve execution results
+- [GET /queue](/api/queue) - View current queue status

@@ -1,0 +1,342 @@
+---
+title: GET /history
+description: Retrieve prompt execution history and results
+---
+
+## Endpoints
+
+### Get All History
+
+```
+GET /history
+GET /api/history
+```
+
+Retrieves the execution history for all completed prompts.
+
+### Get Specific Prompt History
+
+```
+GET /history/{prompt_id}
+GET /api/history/{prompt_id}
+```
+
+Retrieves the execution history for a specific prompt by its ID.
+
+## Query Parameters (All History)
+
+<ParamField query="max_items" type="integer">
+  Maximum number of history items to return. If not specified, returns all history.
+</ParamField>
+
+<ParamField query="offset" type="integer">
+  Number of items to skip before returning results. Defaults to `-1` (no offset). Use for pagination.
+</ParamField>
+
+## Path Parameters (Specific Prompt)
+
+<ParamField path="prompt_id" type="string" required>
+  The unique identifier of the prompt to retrieve history for.
+</ParamField>
+
+## Response
+
+Returns an object where each key is a `prompt_id` and the value contains the execution details.
+
+<ResponseField name="{prompt_id}" type="object">
+  Execution history for a specific prompt.
+  
+  <Expandable title="History object properties">
+    <ResponseField name="prompt" type="array">
+      Array containing the queue item: `[number, prompt_id, workflow, extra_data, outputs_to_execute]`
+    </ResponseField>
+    
+    <ResponseField name="outputs" type="object">
+      Object containing output data from each node that produced outputs. Each key is a node ID.
+      
+      <Expandable title="Node output structure">
+        <ResponseField name="images" type="array">
+          Array of generated images (if the node produces images).
+          
+          <Expandable title="Image object properties">
+            <ResponseField name="filename" type="string">
+              The filename of the saved image
+            </ResponseField>
+            
+            <ResponseField name="subfolder" type="string">
+              Subfolder within the output directory
+            </ResponseField>
+            
+            <ResponseField name="type" type="string">
+              Output type (typically `"output"`, `"temp"`, or `"input"`)
+            </ResponseField>
+          </Expandable>
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+    
+    <ResponseField name="status" type="object">
+      Execution status information.
+      
+      <Expandable title="Status properties">
+        <ResponseField name="status_str" type="string">
+          Status string (e.g., `"success"`, `"error"`)
+        </ResponseField>
+        
+        <ResponseField name="completed" type="boolean">
+          Whether execution completed
+        </ResponseField>
+        
+        <ResponseField name="messages" type="array">
+          Array of execution messages and logs
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Example Request (All History)
+
+```bash
+curl http://127.0.0.1:8188/history?max_items=10&offset=0
+```
+
+## Example Request (Specific Prompt)
+
+```bash
+curl http://127.0.0.1:8188/history/a1b2c3d4-e5f6-7890-abcd-ef1234567890
+```
+
+## Example Response
+
+```json
+{
+  "a1b2c3d4-e5f6-7890-abcd-ef1234567890": {
+    "prompt": [
+      42,
+      "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      {
+        "3": {
+          "class_type": "KSampler",
+          "inputs": {
+            "seed": 156680208700286,
+            "steps": 20,
+            "cfg": 8,
+            "sampler_name": "euler",
+            "scheduler": "normal",
+            "denoise": 1,
+            "model": ["4", 0],
+            "positive": ["6", 0],
+            "negative": ["7", 0],
+            "latent_image": ["5", 0]
+          }
+        },
+        "9": {
+          "class_type": "SaveImage",
+          "inputs": {
+            "filename_prefix": "ComfyUI",
+            "images": ["8", 0]
+          }
+        }
+      },
+      {
+        "client_id": "unique-client-identifier",
+        "create_time": 1709596800000
+      },
+      ["9"]
+    ],
+    "outputs": {
+      "9": {
+        "images": [
+          {
+            "filename": "ComfyUI_00001_.png",
+            "subfolder": "",
+            "type": "output"
+          }
+        ]
+      }
+    },
+    "status": {
+      "status_str": "success",
+      "completed": true,
+      "messages": []
+    }
+  }
+}
+```
+
+## Python Example
+
+```python
+import json
+import urllib.request
+import urllib.parse
+
+def get_history(prompt_id=None, max_items=None, offset=None):
+    """Get execution history.
+    
+    Args:
+        prompt_id: Optional specific prompt ID to retrieve
+        max_items: Maximum number of items to return (all history only)
+        offset: Offset for pagination (all history only)
+    """
+    if prompt_id:
+        url = f"http://127.0.0.1:8188/history/{prompt_id}"
+    else:
+        url = "http://127.0.0.1:8188/history"
+        params = {}
+        if max_items is not None:
+            params['max_items'] = max_items
+        if offset is not None:
+            params['offset'] = offset
+        
+        if params:
+            url += '?' + urllib.parse.urlencode(params)
+    
+    with urllib.request.urlopen(url) as response:
+        return json.loads(response.read())
+
+# Get specific prompt history
+prompt_id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+history = get_history(prompt_id)
+
+if prompt_id in history:
+    prompt_history = history[prompt_id]
+    print(f"Status: {prompt_history['status']['status_str']}")
+    
+    # Extract image outputs
+    for node_id, node_output in prompt_history['outputs'].items():
+        if 'images' in node_output:
+            for image in node_output['images']:
+                print(f"Image: {image['filename']}")
+                print(f"  Subfolder: {image['subfolder']}")
+                print(f"  Type: {image['type']}")
+
+# Get paginated history
+recent_history = get_history(max_items=20, offset=0)
+print(f"Retrieved {len(recent_history)} history items")
+```
+
+## Retrieving Generated Images
+
+Once you have the history, use the `/view` endpoint to download images:
+
+```python
+import urllib.request
+import urllib.parse
+
+def get_image(filename, subfolder, folder_type):
+    """Download an image from the history."""
+    data = {
+        "filename": filename,
+        "subfolder": subfolder,
+        "type": folder_type
+    }
+    url_values = urllib.parse.urlencode(data)
+    url = f"http://127.0.0.1:8188/view?{url_values}"
+    
+    with urllib.request.urlopen(url) as response:
+        return response.read()
+
+# Get history and download images
+history = get_history(prompt_id)
+for node_id in history[prompt_id]['outputs']:
+    node_output = history[prompt_id]['outputs'][node_id]
+    if 'images' in node_output:
+        for image in node_output['images']:
+            image_data = get_image(
+                image['filename'],
+                image['subfolder'],
+                image['type']
+            )
+            # Save or process image_data
+            with open(image['filename'], 'wb') as f:
+                f.write(image_data)
+            print(f"Downloaded: {image['filename']}")
+```
+
+## JavaScript Example
+
+```javascript
+async function getHistory(promptId = null, maxItems = null, offset = null) {
+  let url = 'http://127.0.0.1:8188/history';
+  
+  if (promptId) {
+    url += `/${promptId}`;
+  } else {
+    const params = new URLSearchParams();
+    if (maxItems !== null) params.append('max_items', maxItems);
+    if (offset !== null) params.append('offset', offset);
+    
+    const queryString = params.toString();
+    if (queryString) url += `?${queryString}`;
+  }
+  
+  const response = await fetch(url);
+  return await response.json();
+}
+
+// Get specific prompt history
+const promptId = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
+const history = await getHistory(promptId);
+
+if (history[promptId]) {
+  const promptHistory = history[promptId];
+  console.log('Status:', promptHistory.status.status_str);
+  
+  // Extract image URLs
+  for (const [nodeId, output] of Object.entries(promptHistory.outputs)) {
+    if (output.images) {
+      output.images.forEach(image => {
+        const imageUrl = `http://127.0.0.1:8188/view?` +
+          `filename=${encodeURIComponent(image.filename)}&` +
+          `subfolder=${encodeURIComponent(image.subfolder)}&` +
+          `type=${encodeURIComponent(image.type)}`;
+        console.log('Image URL:', imageUrl);
+      });
+    }
+  }
+}
+```
+
+## Managing History
+
+### Clear All History
+
+```bash
+curl -X POST http://127.0.0.1:8188/history \
+  -H "Content-Type: application/json" \
+  -d '{"clear": true}'
+```
+
+### Delete Specific History Items
+
+```bash
+curl -X POST http://127.0.0.1:8188/history \
+  -H "Content-Type: application/json" \
+  -d '{
+    "delete": [
+      "prompt-id-1",
+      "prompt-id-2"
+    ]
+  }'
+```
+
+## Notes
+
+<Note>
+  History is stored in memory and will be cleared when the server restarts. For persistent storage, implement your own database layer.
+</Note>
+
+<Tip>
+  Use the WebSocket API to receive real-time notifications when execution completes, then immediately fetch the history to get results.
+</Tip>
+
+<Warning>
+  The `prompt` array in the response includes sensitive data in position 5 (index 5), which is removed from queue responses but present in history. Handle this data carefully.
+</Warning>
+
+## See Also
+
+- [POST /prompt](/api/prompt) - Queue prompts for execution
+- [GET /queue](/api/queue) - View current queue status
